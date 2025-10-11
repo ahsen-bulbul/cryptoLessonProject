@@ -1,22 +1,22 @@
-from .caesar_cipher import CaesarCipher
-from .vigenere_cipher import VigenereCipher
-from .playfair_cipher import PlayfairCipher
+from .caesar import CaesarCipher
+from .vigenere import VigenereCipher
+from .playfair import PlayfairCipher
 from .route_cipher import RouteCipher
-from .railfence_cipher import RailFenceCipher
+from .railfence import RailFenceCipher
 
 class CipherFactory:
     @staticmethod
-    def get_cipher(name):
-        if name.lower() == "caesar":
+    def get_cipher(name: str):
+        name = name.lower()
+        if name == "caesar":
             return CaesarCipher()
-        elif name.lower() == "vigenere":
+        elif name == "vigenere":
             return VigenereCipher()
-        elif name.lower() == "playfair":
+        elif name == "playfair":
             return PlayfairCipher()
-        elif name.lower() == "route":
+        elif name == "route":
             return RouteCipher()
-        elif name.lower() == "railfence":
+        elif name == "railfence":
             return RailFenceCipher()
         else:
             raise ValueError("Unknown cipher")
-

@@ -1,28 +1,29 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
+from backend.crypto.factory import CipherFactory
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from crypto.factory import CipherFactory
 
 app = FastAPI()
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*"]
 )
 
-class CryptoRequest(BaseModel):
-    text: str
-    key: str
-    algorithm: str
-    mode: str  # encrypt / decrypt
+clients = []
 
-@app.post("/crypto")
-def crypto_endpoint(req: CryptoRequest):
-    cipher = CipherFactory.get_cipher(req.algorithm)
-    if req.mode == "encrypt":
-        result = cipher.encrypt(req.text, req.key)
-    else:
-        result = cipher.decrypt(req.text, req.key)
-    return {"result": result}
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await websocket.accept()
+    clients.append(websocket)
+    await websocket.send_text("Client connected!")
+    try:
+        while True:
+            data = await websocket.receive_json()
+            text, key, algorithm, mode = data["text"], data["key"], data["algorithm"], data["mode"]
+            cipher = CipherFactory.get_cipher(algorithm)
+            result = cipher.encrypt(text, key) if mode=="encrypt" else cipher.decrypt(text, key)
+            for client in clients:
+                await client.send_json({"result": result})
+    except:
+        clients.remove(websocket)

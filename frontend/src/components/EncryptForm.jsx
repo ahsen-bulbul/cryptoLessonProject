@@ -1,101 +1,47 @@
-import React, { useState } from "react";
-import axios from "axios";
+// src/components/EncryptForm.jsx
+import React, { useState, useRef } from "react";
 
-const EncryptForm = () => {
+export default function EncryptForm() {
   const [text, setText] = useState("");
   const [key, setKey] = useState("");
-  const [method, setMethod] = useState("caesar");
+  const [algorithm, setAlgorithm] = useState("Caesar");
+  const [mode, setMode] = useState("encrypt");
   const [result, setResult] = useState("");
+  const ws = useRef(null);
 
-  const handleEncrypt = async () => {
-    try {
-      const res = await axios.post("http://127.0.0.1:8000/crypto", {
-        text: text,
-        key: key,
-        algorithm: method,
-        mode: "encrypt"
-      });
-      setResult(res.data.result);
-    } catch (err) {
-      console.error(err);
-      setResult("Error connecting to backend");
-    }
+  const connectWebSocket = () => {
+    ws.current = new WebSocket("ws://127.0.0.1:8000/ws");
+    ws.current.onopen = () => console.log("Connected to server");
+    ws.current.onmessage = (e) => setResult(JSON.parse(e.data).result);
   };
 
-  const handleDecrypt = async () => {
-    try {
-      const res = await axios.post("http://127.0.0.1:8000/crypto", {
-        text: text,
-        key: key,
-        algorithm: method,
-        mode: "decrypt"
-      });
-      setResult(res.data.result);
-    } catch (err) {
-      console.error(err);
-      setResult("Error connecting to backend");
-    }
+  const sendMessage = () => {
+    ws.current.send(JSON.stringify({ text, key, algorithm, mode }));
   };
 
   return (
-    <div className="space-y-4">
+    <div style={{ padding: "10px" }}>
+      <h1>Client</h1>
+      <button onClick={connectWebSocket}>Connect</button>
       <div>
-        <label className="block mb-1 font-semibold">Text:</label>
-        <input
-          type="text"
-          className="w-full border px-2 py-1 rounded"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+        <input value={text} onChange={(e) => setText(e.target.value)} placeholder="Text" />
+        <input value={key} onChange={(e) => setKey(e.target.value)} placeholder="Key" />
       </div>
       <div>
-        <label className="block mb-1 font-semibold">Key:</label>
-        <input
-          type="text"
-          className="w-full border px-2 py-1 rounded"
-          value={key}
-          onChange={(e) => setKey(e.target.value)}
-        />
-      </div>
-      <div>
-        <label className="block mb-1 font-semibold">Method:</label>
-        <select
-        className="w-full border px-2 py-1 rounded"
-        value={method}
-        onChange={(e) => setMethod(e.target.value)}
-        >
-        <option value="caesar">Caesar</option>
-        <option value="vigenere">Vigenère</option>
-        <option value="playfair">Playfair</option>
-        <option value="route">Route Cipher</option>
-        <option value="railfence">Rail Fence</option>
+        <select value={algorithm} onChange={(e) => setAlgorithm(e.target.value)}>
+          <option>Caesar</option>
+          <option>Vigenere</option>
+          <option>Playfair</option>
+          <option>Route</option>
+          <option>RailFence</option>
         </select>
-
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="encrypt">Encrypt</option>
+          <option value="decrypt">Decrypt</option>
+        </select>
       </div>
-      <div className="flex space-x-2">
-        <button
-          onClick={handleEncrypt}
-          className="flex-1 bg-blue-500 text-white py-1 rounded hover:bg-blue-600"
-        >
-          Encrypt
-        </button>
-        <button
-          onClick={handleDecrypt}
-          className="flex-1 bg-green-500 text-white py-1 rounded hover:bg-green-600"
-        >
-          Decrypt
-        </button>
-      </div>
-      <div>
-        <label className="block mb-1 font-semibold">Result:</label>
-        <textarea
-          className="w-full border px-2 py-1 rounded"
-          value={result}
-          readOnly
-        />
-      </div>
+      <button onClick={sendMessage}>Send</button>
+      <h3>Result: {result}</h3>
     </div>
   );
-};
-
-export default EncryptForm;
+}
