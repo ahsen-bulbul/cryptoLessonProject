@@ -1,34 +1,32 @@
-from .cipher_base import Cipher
+from .base_cipher import Cipher
 import math
 
 class RouteCipher(Cipher):
-    def encrypt(self, text: str, key: str) -> str:
-        cols = int(key)
-        rows = math.ceil(len(text) / cols)
-        grid = [[' ' for _ in range(cols)] for _ in range(rows)]
-        for i, c in enumerate(text):
-            grid[i // cols][i % cols] = c
-        result = ''
-        for c in range(cols):
-            for r in range(rows):
-                result += grid[r][c]
-        return result.strip()
+    def __init__(self, rows=4):
+        self.rows = rows
 
-    def decrypt(self, text: str, key: str) -> str:
-        cols = int(key)
-        rows = math.ceil(len(text) / cols)
-        num_shaded_boxes = (cols * rows) - len(text)
-        grid = [['' for _ in range(cols)] for _ in range(rows)]
-        col, row = 0, 0
-        for symbol in text:
-            grid[row][col] = symbol
-            col += 1
-            if (col == cols) or (col == cols - 1 and row >= rows - num_shaded_boxes):
-                col = 0
-                row += 1
-        result = ''
-        for r in range(rows):
-            for c in range(cols):
-                if grid[r][c] != '':
-                    result += grid[r][c]
+    def encrypt(self, text: str) -> str:
+        cols = math.ceil(len(text) / self.rows)
+        matrix = [['' for _ in range(cols)] for _ in range(self.rows)]
+        k = 0
+        for i in range(self.rows):
+            for j in range(cols):
+                if k < len(text):
+                    matrix[i][j] = text[k]
+                    k += 1
+        result = ""
+        for j in range(cols):
+            for i in range(self.rows):
+                result += matrix[i][j]
         return result
+
+    def decrypt(self, text: str) -> str:
+        cols = math.ceil(len(text) / self.rows)
+        matrix = [['' for _ in range(cols)] for _ in range(self.rows)]
+        k = 0
+        for j in range(cols):
+            for i in range(self.rows):
+                if k < len(text):
+                    matrix[i][j] = text[k]
+                    k += 1
+        return ''.join(''.join(row) for row in matrix)
