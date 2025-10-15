@@ -116,6 +116,10 @@ export default function CryptoClient() {
               >
                 <option value="caesar" className="bg-purple-900">Caesar Cipher</option>
                 <option value="vigenere" className="bg-purple-900">Vigenere Cipher</option>
+                <option value="railfence" className="bg-purple-900">Rail Fence Cipher</option>
+                <option value="playfair" className="bg-purple-900">Playfair Cipher</option>
+                <option value="route" className="bg-purple-900">Route Cipher</option>
+                <option value="hash" className="bg-purple-900">Hash Cipher</option>
               </select>
             </div>
             

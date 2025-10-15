@@ -2,7 +2,7 @@ from .base_cipher import Cipher
 
 class RailFenceCipher(Cipher):
     def __init__(self, rails=3):
-        self.rails = rails
+        self.rails = int(rails)
 
     def encrypt(self, text: str) -> str:
         fence = [['' for _ in text] for _ in range(self.rails)]

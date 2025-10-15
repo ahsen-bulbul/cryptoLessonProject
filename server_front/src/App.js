@@ -159,8 +159,12 @@ function App() {
                   onChange={(e) => setCipherType(e.target.value)}
                   className="w-full px-3 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                 >
-                  <option value="caesar" className="bg-indigo-900">Caesar</option>
-                  <option value="vigenere" className="bg-indigo-900">Vigenere</option>
+                  <option value="caesar" className="bg-indigo-900">Caesar Cipher</option>
+                  <option value="vigenere" className="bg-indigo-900">Vigenere Cipher</option>
+                  <option value="railfence" className="bg-indigo-900">Rail Fence Cipher</option>
+                  <option value="playfair" className="bg-indigo-900">Playfair Cipher</option>
+                  <option value="route" className="bg-indigo-900">Route Cipher</option>
+                  <option value="hash" className="bg-indigo-900">Hash Cipher</option>
                 </select>
               </div>
               
