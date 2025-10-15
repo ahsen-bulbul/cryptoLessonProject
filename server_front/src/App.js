@@ -9,14 +9,14 @@ function App() {
   const [decryptedResult, setDecryptedResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState('offline');
-  const [serverUrl, setServerUrl] = useState('http://localhost:8000');
+  const [serverUrl, setServerUrl] = useState('http://172.17.8.179:8000');
 
   useEffect(() => {
     checkServerStatus();
     const interval = setInterval(checkServerStatus, 5000);
     
     // WebSocket bağlantısı
-    const ws = new WebSocket('ws://localhost:8000/ws');
+    const ws = new WebSocket('ws://172.17.8.179:8000/ws');
     
     ws.onopen = () => {
       console.log('✅ WebSocket bağlantısı kuruldu!');
@@ -135,7 +135,7 @@ function App() {
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="http://localhost:8000"
+              placeholder="http://172.17.8.179:8000"
             />
           </div>
         </div>
