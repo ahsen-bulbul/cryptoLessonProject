@@ -3,20 +3,21 @@ import { Unlock, RefreshCw, Server, AlertCircle } from 'lucide-react';
 
 function App() {
   const [messages, setMessages] = useState([]);
+  const [incomingMessages, setIncomingMessages] = useState([]);
   const [encryptedInput, setEncryptedInput] = useState('');
   const [cipherType, setCipherType] = useState('caesar');
   const [key, setKey] = useState('3');
   const [decryptedResult, setDecryptedResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState('offline');
-  const [serverUrl, setServerUrl] = useState('http://172.17.8.179:8000');
+  const [serverUrl, setServerUrl] = useState('http://172.17.8.87:8000');
 
   useEffect(() => {
     checkServerStatus();
     const interval = setInterval(checkServerStatus, 5000);
     
     // WebSocket bağlantısı
-    const ws = new WebSocket('ws://172.17.8.179:8000/ws');
+    const ws = new WebSocket('ws://172.17.8.87:8000/ws');
     
     ws.onopen = () => {
       console.log('✅ WebSocket bağlantısı kuruldu!');
@@ -26,13 +27,18 @@ function App() {
       console.log('📩 Mesaj alındı:', event.data);
       try {
         const data = JSON.parse(event.data);
-        // Gelen şifreli mesajı otomatik doldur
-        setEncryptedInput(data.encrypted_message);
-        setCipherType(data.cipher_type);
-        setKey(data.key.toString());
         
-        // Başarı bildirimi
-        console.log('✅ Mesaj işlendi:', data);
+        // Gelen mesajları ayrı listeye ekle
+        setIncomingMessages(prev => [{
+          id: Date.now(),
+          encrypted: data.encrypted_message,
+          cipher: data.cipher_type,
+          key: data.key,
+          original: data.original_message,
+          timestamp: new Date().toLocaleString('tr-TR')
+        }, ...prev]);
+        
+        console.log('✅ Mesaj kaydedildi:', data);
       } catch (error) {
         console.error('❌ Mesaj parse hatası:', error);
       }
@@ -109,6 +115,16 @@ function App() {
     setDecryptedResult('');
   };
 
+  const clearIncoming = () => {
+    setIncomingMessages([]);
+  };
+
+  const loadToDecrypt = (msg) => {
+    setEncryptedInput(msg.encrypted);
+    setCipherType(msg.cipher);
+    setKey(msg.key);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-900 via-indigo-900 to-purple-900 p-6">
       <div className="max-w-6xl mx-auto">
@@ -135,12 +151,71 @@ function App() {
               value={serverUrl}
               onChange={(e) => setServerUrl(e.target.value)}
               className="px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
-              placeholder="http://172.17.8.179:8000"
+              placeholder="http://172.17.8.87:8000"
             />
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Incoming Messages Panel - YENİ */}
+          <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+                <h2 className="text-xl font-semibold text-white">Gelen Mesajlar</h2>
+              </div>
+              <button
+                onClick={clearIncoming}
+                className="flex items-center gap-2 px-3 py-1 bg-red-500/20 hover:bg-red-500/30 border border-red-400/50 rounded-lg text-red-200 text-sm transition-colors"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Temizle
+              </button>
+            </div>
+
+            {incomingMessages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-blue-300">
+                <AlertCircle className="w-12 h-12 mb-3 opacity-50" />
+                <p className="text-sm text-center">Client'tan mesaj bekleniyor...</p>
+              </div>
+            ) : (
+              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+                {incomingMessages.map((msg) => (
+                  <div 
+                    key={msg.id} 
+                    className="bg-gradient-to-br from-purple-500/20 to-pink-500/20 border border-purple-400/30 rounded-lg p-4 hover:border-purple-400/50 transition-all cursor-pointer"
+                    onClick={() => loadToDecrypt(msg)}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-purple-300 uppercase">
+                        {msg.cipher}
+                      </span>
+                      <span className="text-xs text-purple-200">{msg.timestamp}</span>
+                    </div>
+                    
+                    <div className="mb-2">
+                      <p className="text-xs text-purple-300 mb-1">Anahtar:</p>
+                      <p className="text-sm text-white font-mono bg-black/30 rounded px-2 py-1">
+                        {msg.key}
+                      </p>
+                    </div>
+                    
+                    <div>
+                      <p className="text-xs text-purple-300 mb-1">Şifreli Mesaj:</p>
+                      <p className="text-sm text-white font-mono bg-black/30 rounded p-2 break-all">
+                        {msg.encrypted}
+                      </p>
+                    </div>
+
+                    <div className="mt-2 text-xs text-center text-purple-300">
+                      💡 Tıkla ve deşifre et
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* Decrypt Panel */}
           <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 border border-white/20">
             <div className="flex items-center gap-2 mb-4">
