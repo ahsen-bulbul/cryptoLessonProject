@@ -386,6 +386,8 @@ function App() {
                   <option value="railfence" style={{ backgroundColor: COLOR_DARK }}>Rail Fence Cipher</option>
                   <option value="playfair" style={{ backgroundColor: COLOR_DARK }}>Playfair Cipher</option>
                   <option value="route" style={{ backgroundColor: COLOR_DARK }}>Route Cipher</option>
+                  <option value="des" style={{ backgroundColor: COLOR_DARK }}>DES Cipher</option>
+                  <option value="aes" style={{ backgroundColor: COLOR_DARK }}>AES Cipher</option>
                   <option value="hash" style={{ backgroundColor: COLOR_DARK }}>Hash Cipher</option>
                 </select>
               </div>

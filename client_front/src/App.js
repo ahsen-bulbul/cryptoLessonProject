@@ -166,6 +166,8 @@ export default function CryptoClient() {
               <option value="railfence">Rail Fence Cipher</option>
               <option value="playfair">Playfair Cipher</option>
               <option value="route">Route Cipher</option>
+              <option value="des">DES Cipher</option>
+              <option value="aes">AES Cipher</option>
               <option value="hash">Hash Cipher</option>
             </select>
           </div>

@@ -4,6 +4,8 @@ from crypto.railfence_cipher import RailFenceCipher
 from crypto.playfair_cipher import PlayfairCipher
 from crypto.route_cipher import RouteCipher
 from crypto.hash_cipher import HashCipher
+from crypto.des_cipher import DESCipher
+from crypto.aes_cipher import AESCipher
 
 
 class CipherFactory:
@@ -19,6 +21,8 @@ class CipherFactory:
             "playfair": lambda k: PlayfairCipher(k),
             "route": lambda k: RouteCipher(k),
             "hash": lambda k: HashCipher(k),
+            "des": lambda k: DESCipher(k),
+            "aes": lambda k: AESCipher(k),
         }
         if name not in algorithms:
             raise ValueError("Geçersiz algoritma adı.")
