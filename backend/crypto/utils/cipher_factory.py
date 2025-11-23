@@ -7,6 +7,7 @@ from crypto.hash_cipher import HashCipher
 from crypto.des_cipher import DESCipher
 from crypto.aes_cipher import AESCipher
 from crypto.des_m_cipher import DESMCipher
+from crypto.aes_m_cipher import AESMCipher
 
 
 class CipherFactory:
@@ -24,12 +25,15 @@ class CipherFactory:
             "des_lib": lambda k: DESCipher(k),
             "des_manual": lambda k: DESMCipher(k, normalized_mode),
             "aes": lambda k: AESCipher(k),
+            "aes_manual": lambda k: AESMCipher(k),
         }
 
         if name in ("des_manual", "desm", "des-manual", "des"):
             name = "des_manual"
         elif name in ("des_lib", "deslib", "des-lib"):
             name = "des_lib"
+        elif name in ("aes_manual", "aesm", "aes-manual"):
+            name = "aes_manual"
 
         if name not in algorithms:
             raise ValueError("Geçersiz algoritma adı.")
