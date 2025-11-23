@@ -399,6 +399,7 @@ function App() {
                   <option value="des_lib" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>DES Cipher (Library)</option>
                   <option value="des_manual" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>DES Cipher (Manual)</option>
                   <option value="aes" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>AES Cipher</option>
+                  <option value="aes_manual" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>AES Cipher (Manual)</option>
                   <option value="hash" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Hash Cipher</option>
                 </select>
               </div>
