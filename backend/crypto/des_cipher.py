@@ -10,7 +10,7 @@ try:
     from Crypto.Cipher import DES
 except ModuleNotFoundError as exc: 
     raise ModuleNotFoundError(
-        "DESCipher requires the 'pycryptodome' package. Install it via 'pip install pycryptodome'."
+        "kütüphane yok knk 'pip install pycryptodome'."
     ) from exc
 
 
@@ -19,7 +19,7 @@ class DESCipher(Cipher):
 
     def __init__(self, key: str):
         if not isinstance(key, str):
-            raise ValueError("DES key must be a string.")
+            raise ValueError("DES anahtari string olcak.")
 
         digest = hashlib.sha256(key.encode("utf-8")).digest()
         self._key = digest[: self.block_size]
@@ -38,7 +38,7 @@ class DESCipher(Cipher):
         return data[:-padding_len]
 
     def encrypt(self, text: str) -> str:
-        cipher = DES.new(self._key, DES.MODE_CBC, iv=self._iv)
+        cipher = DES.new(self._key, DES.MODE_CBC, iv=self._iv)#burda kütüphanenin içinde tüm işlemleri yapıyo sbox pbox vs
         padded = self._pad(text.encode("utf-8"))
         encrypted = cipher.encrypt(padded)
         return base64.b64encode(encrypted).decode("utf-8")

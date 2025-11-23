@@ -9,6 +9,7 @@ function App() {
   const [incomingMessages, setIncomingMessages] = useState([]);
   const [encryptedInput, setEncryptedInput] = useState('');
   const [cipherType, setCipherType] = useState('caesar');
+  const [mode, setMode] = useState('ECB');
   const [key, setKey] = useState('3');
   const [decryptedResult, setDecryptedResult] = useState('');
   const [loading, setLoading] = useState(false);
@@ -71,6 +72,7 @@ function App() {
           encrypted: data.encrypted_message,
           cipher: data.cipher_type,
           key: data.key,
+          mode: data.mode || 'ECB',
           original: data.original_message,
           timestamp: new Date().toLocaleString('tr-TR')
         }, ...prev]);
@@ -109,7 +111,8 @@ function App() {
         body: JSON.stringify({
           encrypted_message: encryptedInput,
           cipher_type: cipherType,
-          key: cipherType === 'caesar' ? parseInt(key) : key
+          key: cipherType === 'caesar' ? parseInt(key) : key,
+          mode: cipherType === 'des_manual' ? mode : undefined
         })
       });
 
@@ -122,6 +125,7 @@ function App() {
           encrypted: encryptedInput,
           decrypted: data.decrypted_message,
           cipher: cipherType,
+          mode: cipherType === 'des_manual' ? mode : undefined,
           timestamp: new Date().toLocaleString('tr-TR')
         }, ...prev]);
         setEncryptedInput('');
@@ -148,6 +152,9 @@ function App() {
     setEncryptedInput(msg.encrypted);
     setCipherType(msg.cipher);
     setKey(String(msg.key));
+    if (msg.mode) {
+      setMode(msg.mode);
+    }
   };
 
   const getServerStatusColor = () => {
@@ -335,6 +342,9 @@ function App() {
                       </span>
                       <span className="text-xs text-white/40 font-mono">{msg.timestamp}</span>
                     </div>
+                    {msg.mode && (
+                      <p className="text-xs text-white/60 font-mono mb-2">Mode: {msg.mode}</p>
+                    )}
                     
                     <div className="mb-3">
                       <p className="text-xs text-white/40 mb-2 tracking-wider">KEY</p>
@@ -381,14 +391,15 @@ function App() {
                   className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
                   style={{ cursor: 'pointer' }}
                 >
-                  <option value="caesar" style={{ backgroundColor: COLOR_DARK }}>Caesar Cipher</option>
-                  <option value="vigenere" style={{ backgroundColor: COLOR_DARK }}>Vigenere Cipher</option>
-                  <option value="railfence" style={{ backgroundColor: COLOR_DARK }}>Rail Fence Cipher</option>
-                  <option value="playfair" style={{ backgroundColor: COLOR_DARK }}>Playfair Cipher</option>
-                  <option value="route" style={{ backgroundColor: COLOR_DARK }}>Route Cipher</option>
-                  <option value="des" style={{ backgroundColor: COLOR_DARK }}>DES Cipher</option>
-                  <option value="aes" style={{ backgroundColor: COLOR_DARK }}>AES Cipher</option>
-                  <option value="hash" style={{ backgroundColor: COLOR_DARK }}>Hash Cipher</option>
+                  <option value="caesar" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Caesar Cipher</option>
+                  <option value="vigenere" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Vigenere Cipher</option>
+                  <option value="railfence" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Rail Fence Cipher</option>
+                  <option value="playfair" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Playfair Cipher</option>
+                  <option value="route" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Route Cipher</option>
+                  <option value="des_lib" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>DES Cipher (Library)</option>
+                  <option value="des_manual" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>DES Cipher (Manual)</option>
+                  <option value="aes" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>AES Cipher</option>
+                  <option value="hash" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Hash Cipher</option>
                 </select>
               </div>
               
@@ -396,15 +407,31 @@ function App() {
                 <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
                   KEY
                 </label>
-                <input
-                  type="text"
-                  value={key}
-                  onChange={(e) => setKey(e.target.value)}
-                  className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all font-mono"
-                  placeholder={cipherType === 'caesar' ? '3' : 'KEYWORD'}
-                />
-              </div>
+            <input
+              type="text"
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all font-mono"
+              placeholder={cipherType === 'caesar' ? '3' : 'KEYWORD'}
+            />
+          </div>
+          {cipherType === 'des_manual' && (
+            <div>
+              <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
+                MODE (ECB / CBC)
+              </label>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+                className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="ECB" style={{ backgroundColor: COLOR_DARK }}>ECB</option>
+                <option value="CBC" style={{ backgroundColor: COLOR_DARK }}>CBC</option>
+              </select>
             </div>
+          )}
+        </div>
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
@@ -498,6 +525,9 @@ function App() {
                       </span>
                       <span className="text-xs text-white/40 font-mono">{msg.timestamp}</span>
                     </div>
+                    {msg.mode && (
+                      <p className="text-xs text-white/60 font-mono mb-2">Mode: {msg.mode}</p>
+                    )}
                     
                     <div className="mb-3">
                       <p className="text-xs text-white/40 mb-2 tracking-wider">ENCRYPTED</p>

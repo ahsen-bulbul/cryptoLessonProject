@@ -9,6 +9,7 @@ export default function CryptoClient() {
   const [message, setMessage] = useState('');
   const [fileContent, setFileContent] = useState('');
   const [cipherType, setCipherType] = useState('caesar');
+  const [mode, setMode] = useState('ECB');
   const [key, setKey] = useState('3');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
@@ -45,6 +46,7 @@ export default function CryptoClient() {
           encrypted: data.encrypted_message,
           cipher: data.cipher_type,
           key: data.key,
+          mode: data.mode || 'ECB',
           original: data.original_message,
           timestamp: new Date().toLocaleString()
         }, ...prev]);
@@ -98,7 +100,8 @@ export default function CryptoClient() {
         body: JSON.stringify({
           message,
           cipher_type: cipherType,
-          key: cipherType === 'caesar' ? parseInt(key) : key
+          key: cipherType === 'caesar' ? parseInt(key) : key,
+          mode: cipherType === 'des_manual' ? mode : undefined
         })
       });
       const data = await res.json();
@@ -115,6 +118,9 @@ export default function CryptoClient() {
     setMessage(msg.encrypted);
     setCipherType(msg.cipher);
     setKey(String(msg.key));
+    if (msg.mode) {
+      setMode(msg.mode);
+    }
   };
 
   const getWsStatusColor = () => {
@@ -159,16 +165,20 @@ export default function CryptoClient() {
         <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-6 mb-6 border border-white/20 grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-pink-200 mb-2">Şifreleme Türü</label>
-            <select value={cipherType} onChange={(e)=>setCipherType(e.target.value)}
-              className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white">
-              <option value="caesar">Caesar Cipher</option>
-              <option value="vigenere">Vigenere Cipher</option>
-              <option value="railfence">Rail Fence Cipher</option>
-              <option value="playfair">Playfair Cipher</option>
-              <option value="route">Route Cipher</option>
-              <option value="des">DES Cipher</option>
-              <option value="aes">AES Cipher</option>
-              <option value="hash">Hash Cipher</option>
+            <select
+              value={cipherType}
+              onChange={(e)=>setCipherType(e.target.value)}
+              className="w-full px-4 py-2 bg-white text-gray-900 border border-white/30 rounded-lg"
+            >
+              <option value="caesar" style={{ color: 'black' }}>Caesar Cipher</option>
+              <option value="vigenere" style={{ color: 'black' }}>Vigenere Cipher</option>
+              <option value="railfence" style={{ color: 'black' }}>Rail Fence Cipher</option>
+              <option value="playfair" style={{ color: 'black' }}>Playfair Cipher</option>
+              <option value="route" style={{ color: 'black' }}>Route Cipher</option>
+              <option value="des_lib" style={{ color: 'black' }}>DES Cipher (Library)</option>
+              <option value="des_manual" style={{ color: 'black' }}>DES Cipher (Manual)</option>
+              <option value="aes" style={{ color: 'black' }}>AES Cipher</option>
+              <option value="hash" style={{ color: 'black' }}>Hash Cipher</option>
             </select>
           </div>
           <div>
@@ -176,6 +186,19 @@ export default function CryptoClient() {
             <input type="text" value={key} onChange={(e)=>setKey(e.target.value)}
               className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white" />
           </div>
+          {cipherType === 'des_manual' && (
+            <div>
+              <label className="block text-sm font-medium text-pink-200 mb-2">DES Mode</label>
+              <select
+                value={mode}
+                onChange={(e) => setMode(e.target.value)}
+                className="w-full px-4 py-2 bg-white/20 border border-white/30 rounded-lg text-white"
+              >
+                <option value="ECB">ECB</option>
+                <option value="CBC">CBC</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Message Input */}
@@ -217,7 +240,7 @@ export default function CryptoClient() {
               <div key={msg.id} className="mb-2 p-2 bg-purple-500/20 rounded cursor-pointer"
                     onClick={()=>loadToInput(msg)}>
                 <p className="text-sm text-white font-mono break-all">Şifreli: {msg.encrypted}</p>
-                <p className="text-xs text-purple-200">Tip: {msg.cipher} | Anahtar: {msg.key} | {msg.timestamp}</p>
+                <p className="text-xs text-purple-200">Tip: {msg.cipher} | Mode: {msg.mode || '-'} | Anahtar: {msg.key} | {msg.timestamp}</p>
                 <p className="text-xs text-purple-200">Orijinal: {msg.original}</p>
               </div>
             ))

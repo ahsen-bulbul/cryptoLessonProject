@@ -10,7 +10,7 @@ try:
     from Crypto.Cipher import AES
 except ModuleNotFoundError as exc:  
     raise ModuleNotFoundError(
-        "AESCipher requires the 'pycryptodome' package. Install it via 'pip install pycryptodome'."
+        "kutuphaneyi indir 'pip install pycryptodome'."
     ) from exc
 
 
@@ -19,7 +19,7 @@ class AESCipher(Cipher):
 
     def __init__(self, key: str):
         if not isinstance(key, str):
-            raise ValueError("AES key must be a string.")
+            raise ValueError("AES anahtari string olmali.")
 
         digest = hashlib.sha512(key.encode("utf-8")).digest()
         self._key = digest[: 2 * self.block_size]  

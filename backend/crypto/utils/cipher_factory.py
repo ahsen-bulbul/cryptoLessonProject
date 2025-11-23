@@ -6,14 +6,14 @@ from crypto.route_cipher import RouteCipher
 from crypto.hash_cipher import HashCipher
 from crypto.des_cipher import DESCipher
 from crypto.aes_cipher import AESCipher
+from crypto.des_m_cipher import DESMCipher
 
 
 class CipherFactory:
     @staticmethod
-    def get_cipher(name: str, key):
-        """
-        Cipher instance'ı key ile oluşturur
-        """
+    def get_cipher(name: str, key, mode="ECB"):
+        normalized_mode = (mode or "ECB").upper()
+
         algorithms = {
             "caesar": lambda k: CaesarCipher(k),
             "vigenere": lambda k: VigenereCipher(k),
@@ -21,11 +21,17 @@ class CipherFactory:
             "playfair": lambda k: PlayfairCipher(k),
             "route": lambda k: RouteCipher(k),
             "hash": lambda k: HashCipher(k),
-            "des": lambda k: DESCipher(k),
+            "des_lib": lambda k: DESCipher(k),
+            "des_manual": lambda k: DESMCipher(k, normalized_mode),
             "aes": lambda k: AESCipher(k),
         }
+
+        if name in ("des_manual", "desm", "des-manual", "des"):
+            name = "des_manual"
+        elif name in ("des_lib", "deslib", "des-lib"):
+            name = "des_lib"
+
         if name not in algorithms:
             raise ValueError("Geçersiz algoritma adı.")
-        
-        # Key ile instance oluştur
+
         return algorithms[name](key)

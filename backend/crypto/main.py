@@ -14,7 +14,7 @@ app = FastAPI(title="Crypto Server")
 
 connected_clients: List[WebSocket] = []
 
-# CORS ayarları
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,21 +23,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Request Models
+
 class EncryptRequest(BaseModel):
     message: str
     cipher_type: str
     key: str | int
+    mode: str = "ECB"
 
 class DecryptRequest(BaseModel):
     encrypted_message: str
     cipher_type: str
     key: str | int
+    mode: str = "ECB"
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    # Bağlantıyı kabul et ve listeye ekle
+    
     await websocket.accept()
     connected_clients.append(websocket)
     print(f"Client connected. Total clients: {len(connected_clients)}")
@@ -72,7 +74,7 @@ async def encrypt_message(request: EncryptRequest):
         key = int(request.key) if request.cipher_type.lower() == "caesar" else request.key
         
        
-        cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key)
+        cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key, request.mode)
         encrypted = cipher.encrypt(request.message)
         
        
@@ -83,7 +85,8 @@ async def encrypt_message(request: EncryptRequest):
             "encrypted_message": encrypted,
             "cipher_type": request.cipher_type,
             "key": str(request.key),
-            "original_message": request.message
+            "original_message": request.message,
+            "mode": request.mode,
         }
         
         for client in connected_clients:
@@ -120,13 +123,14 @@ def decrypt_message(request: DecryptRequest):
        
         key = int(request.key) if request.cipher_type.lower() == "caesar" else request.key
         
-        cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key)
+        cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key, request.mode)
         decrypted = cipher.decrypt(request.encrypted_message)
         
       
         return {
             "decrypted_message": decrypted,
             "cipher_type": request.cipher_type,
+            "mode": request.mode,
             "status": "success"
         }
     except Exception as e:
