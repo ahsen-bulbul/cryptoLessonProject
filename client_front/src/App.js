@@ -23,6 +23,11 @@ export default function CryptoClient() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [incomingMessages, setIncomingMessages] = useState([]);
+  const [rsaPublicKey, setRsaPublicKey] = useState('');
+  const [rsaPrivateKey, setRsaPrivateKey] = useState('');
+  const [symmetricKey, setSymmetricKey] = useState('');
+  const [encryptedKey, setEncryptedKey] = useState('');
+  const [rsaStatus, setRsaStatus] = useState('');
 
   const wsRef = useRef(null);
   const [wsStatus, setWsStatus] = useState('Disconnected');
@@ -56,6 +61,7 @@ export default function CryptoClient() {
             key: data.key,
             mode: data.mode || 'ECB',
             original: data.original_message,
+            encrypted_key: data.encrypted_key,
             timestamp: new Date().toLocaleString(),
           },
           ...prev,
@@ -105,6 +111,7 @@ export default function CryptoClient() {
           cipher_type: cipherType,
           key: cipherType === 'caesar' ? parseInt(key) : key,
           mode: cipherType === 'des_manual' ? mode : undefined,
+          encrypted_key: encryptedKey || undefined,
         }),
       });
       const data = await res.json();
@@ -115,6 +122,75 @@ export default function CryptoClient() {
       setResponse(`❌ Bağlantı Hatası: ${err.message}. Port ve IP adreslerini kontrol edin.`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateRsaKeys = async () => {
+    setRsaStatus('');
+    try {
+      const res = await fetch(`${HTTP_URL}/rsa/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key_size: 2048 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRsaPrivateKey(data.private_key);
+        setRsaPublicKey(data.public_key);
+        setRsaStatus('✅ RSA anahtar çifti üretildi.');
+      } else {
+        setRsaStatus(`⚠️ Hata: ${data.detail || 'Bilinmeyen hata'}`);
+      }
+    } catch (err) {
+      setRsaStatus(`⚠️ Bağlantı hatası: ${err.message}`);
+    }
+  };
+
+  const wrapSymmetricKey = async () => {
+    setRsaStatus('');
+    if (!rsaPublicKey || !symmetricKey) {
+      setRsaStatus('⚠️ Public key ve simetrik anahtar girilmeli.');
+      return;
+    }
+    try {
+      const res = await fetch(`${HTTP_URL}/rsa/wrap-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: rsaPublicKey, symmetric_key: symmetricKey }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEncryptedKey(data.encrypted_key);
+        setRsaStatus('✅ Anahtar sarıldı (RSA-OAEP).');
+      } else {
+        setRsaStatus(`⚠️ Hata: ${data.detail || 'Bilinmeyen hata'}`);
+      }
+    } catch (err) {
+      setRsaStatus(`⚠️ Bağlantı hatası: ${err.message}`);
+    }
+  };
+
+  const unwrapSymmetricKey = async () => {
+    setRsaStatus('');
+    if (!rsaPrivateKey || !encryptedKey) {
+      setRsaStatus('⚠️ Private key ve sarılmış anahtar gerekli.');
+      return;
+    }
+    try {
+      const res = await fetch(`${HTTP_URL}/rsa/unwrap-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ private_key: rsaPrivateKey, encrypted_key: encryptedKey }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setSymmetricKey(data.symmetric_key);
+        setRsaStatus('✅ Anahtar açıldı.');
+      } else {
+        setRsaStatus(`⚠️ Hata: ${data.detail || 'Bilinmeyen hata'}`);
+      }
+    } catch (err) {
+      setRsaStatus(`⚠️ Bağlantı hatası: ${err.message}`);
     }
   };
 
@@ -346,6 +422,83 @@ export default function CryptoClient() {
           </div>
         )}
 
+        {/* RSA Key Transport */}
+        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-lg shadow-pink-500/10 backdrop-blur">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs uppercase tracking-[0.3em] text-white/60">RSA Anahtar Taşıma</p>
+            <div className="text-xs px-3 py-1 rounded-full bg-white/10 text-white/70 border border-white/10">
+              Key Wrap (OAEP)
+            </div>
+          </div>
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs text-white/60">Public Key (PEM)</label>
+                <button
+                  onClick={generateRsaKeys}
+                  className="text-xs px-3 py-1 bg-white text-gray-900 rounded-lg border border-white/30 hover:bg-white/90"
+                >
+                  RSA Üret
+                </button>
+              </div>
+              <textarea
+                value={rsaPublicKey}
+                onChange={(e) => setRsaPublicKey(e.target.value)}
+                className="w-full px-3 py-3 bg-black/40 border border-white/10 rounded-lg text-white text-xs min-h-[120px] font-mono"
+                placeholder="-----BEGIN PUBLIC KEY-----"
+              />
+              <label className="text-xs text-white/60">Simetrik Anahtar (AES/DES)</label>
+              <input
+                value={symmetricKey}
+                onChange={(e) => setSymmetricKey(e.target.value)}
+                className="w-full px-3 py-3 bg-white/10 text-white border border-white/15 rounded-lg"
+                placeholder="ör. my-secret-key"
+              />
+              <button
+                onClick={wrapSymmetricKey}
+                className="w-full text-gray-900 font-bold py-3 rounded-lg"
+                style={{
+                  background: `linear-gradient(135deg, ${COLOR_PINK} 0%, ${COLOR_ACCENT} 100%)`,
+                  boxShadow: `0 10px 30px ${COLOR_PINK}40`,
+                }}
+              >
+                Anahtarı Sar (Public)
+              </button>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs text-white/60">Private Key (PEM)</label>
+              <textarea
+                value={rsaPrivateKey}
+                onChange={(e) => setRsaPrivateKey(e.target.value)}
+                className="w-full px-3 py-3 bg-black/40 border border-white/10 rounded-lg text-white text-xs min-h-[120px] font-mono"
+                placeholder="-----BEGIN PRIVATE KEY-----"
+              />
+              <label className="text-xs text-white/60">Sarılmış Anahtar (Base64)</label>
+              <textarea
+                value={encryptedKey}
+                onChange={(e) => setEncryptedKey(e.target.value)}
+                className="w-full px-3 py-3 bg-black/40 border border-white/10 rounded-lg text-white text-xs min-h-[80px] font-mono"
+                placeholder="RSA ile sarılmış anahtar"
+              />
+              <button
+                onClick={unwrapSymmetricKey}
+                className="w-full text-gray-900 font-bold py-3 rounded-lg"
+                style={{
+                  background: `linear-gradient(135deg, ${COLOR_ACCENT} 0%, ${COLOR_PINK} 100%)`,
+                  boxShadow: `0 10px 30px ${COLOR_PINK}40`,
+                }}
+              >
+                Anahtarı Aç (Private)
+              </button>
+            </div>
+          </div>
+          {rsaStatus && (
+            <div className="mt-3 text-sm text-white/80 font-mono break-all bg-black/40 border border-white/10 rounded-lg p-3">
+              {rsaStatus}
+            </div>
+          )}
+        </div>
+
         {/* Incoming WS Messages */}
         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-lg shadow-pink-500/10 backdrop-blur">
             <div className="flex items-center justify-between mb-4">
@@ -370,6 +523,9 @@ export default function CryptoClient() {
                     </div>
                     <p className="text-xs text-white/60 mb-1">Mode: {msg.mode || '-'}</p>
                     <p className="text-xs text-white/60 mb-2">Anahtar: {msg.key}</p>
+                    {msg.encrypted_key && (
+                      <p className="text-xs text-white/60 mb-2">Sarılmış Anahtar: {msg.encrypted_key}</p>
+                    )}
                     <p className="text-sm text-white font-mono break-all">Şifreli: {msg.encrypted}</p>
                     <p className="text-xs text-white/60 mt-1">Orijinal: {msg.original}</p>
                   </div>

@@ -230,7 +230,7 @@ class DESMCipher(Cipher):
             out = []
             for i in range(0, len(bits), 64):
                 out += self.encrypt_block(bits[i:i+64])
-        else:  # CBC
+        else:  
             out = self.encrypt_cbc(bits)
 
         return base64.b64encode(self.bits_to_bytes(out)).decode()
@@ -258,7 +258,7 @@ class DESMCipher(Cipher):
             out = []
             for i in range(0, len(bits), 64):
                 out += self.decrypt_block(bits[i:i+64])
-        else:  # CBC
+        else:  
             out = self.decrypt_cbc(bits)
 
         return self._unpad(self.bits_to_bytes(out)).decode()

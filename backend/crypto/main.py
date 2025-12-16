@@ -7,8 +7,10 @@ import asyncio
 
 try:
     from .utils.cipher_factory import CipherFactory
+    from .rsa_cipher import RSACipher
 except:
     from utils.cipher_factory import CipherFactory
+    from rsa_cipher import RSACipher
 
 app = FastAPI(title="Crypto Server")
 
@@ -29,12 +31,24 @@ class EncryptRequest(BaseModel):
     cipher_type: str
     key: str | int
     mode: str = "ECB"
+    encrypted_key: str | None = None  # RSA ile sarilmis simetrik anahtar (opsiyonel)
 
 class DecryptRequest(BaseModel):
     encrypted_message: str
     cipher_type: str
     key: str | int
     mode: str = "ECB"
+
+class RSAKeygenRequest(BaseModel):
+    key_size: int = 2048
+
+class RSAWrapRequest(BaseModel):
+    public_key: str
+    symmetric_key: str
+
+class RSAUnwrapRequest(BaseModel):
+    private_key: str
+    encrypted_key: str
 
 
 @app.websocket("/ws")
@@ -87,6 +101,7 @@ async def encrypt_message(request: EncryptRequest):
             "key": str(request.key),
             "original_message": request.message,
             "mode": request.mode,
+            "encrypted_key": request.encrypted_key,
         }
         
         for client in connected_clients:
@@ -111,7 +126,8 @@ async def encrypt_message(request: EncryptRequest):
             "encrypted_message": encrypted,
             "cipher_type": request.cipher_type,
             "status": "success",
-            "broadcasted_to": len(connected_clients)
+            "broadcasted_to": len(connected_clients),
+            "encrypted_key": request.encrypted_key,
         }
     except Exception as e:
         print(f"HATA: Şifreleme veya Broadcast hatası: {e}")
@@ -133,5 +149,35 @@ def decrypt_message(request: DecryptRequest):
             "mode": request.mode,
             "status": "success"
         }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# RSA key wrapping endpoints (AES/DES anahtari güvenli tasimak icin)
+@app.post("/rsa/generate")
+def generate_rsa_keys(request: RSAKeygenRequest):
+    try:
+        private_key, public_key = RSACipher.generate_keypair(request.key_size)
+        return {"private_key": private_key, "public_key": public_key}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/rsa/wrap-key")
+def wrap_symmetric_key(request: RSAWrapRequest):
+    try:
+        rsa = RSACipher(public_key_pem=request.public_key)
+        encrypted_key = rsa.wrap_key(request.symmetric_key)
+        return {"encrypted_key": encrypted_key, "status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/rsa/unwrap-key")
+def unwrap_symmetric_key(request: RSAUnwrapRequest):
+    try:
+        rsa = RSACipher(private_key_pem=request.private_key)
+        symmetric_key = rsa.unwrap_key(request.encrypted_key)
+        return {"symmetric_key": symmetric_key, "status": "success"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
