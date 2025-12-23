@@ -5,6 +5,8 @@ function App() {
   // STATE'LER
   const [host, setHost] = useState('localhost');
   const [port, setPort] = useState('8080');
+  const [rsaHost, setRsaHost] = useState('localhost');
+  const [rsaPort, setRsaPort] = useState('9090');
   const [messages, setMessages] = useState([]);
   const [incomingMessages, setIncomingMessages] = useState([]);
   const [encryptedInput, setEncryptedInput] = useState('');
@@ -28,6 +30,7 @@ function App() {
   // URL'LER
   const BASE_HTTP_URL = useMemo(() => `http://${host}:${port}`, [host, port]);
   const BASE_WS_URL = useMemo(() => `ws://${host}:${port}/ws`, [host, port]);
+  const RSA_HTTP_URL = useMemo(() => `http://${rsaHost}:${rsaPort}`, [rsaHost, rsaPort]);
 
   // YILDIZLAR
   const generateStars = (count) => {
@@ -147,7 +150,7 @@ function App() {
   const generateRsaKeys = async () => {
     setRsaStatus('');
     try {
-      const res = await fetch(`${BASE_HTTP_URL}/rsa/generate`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key_size: 2048 })
@@ -172,7 +175,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch(`${BASE_HTTP_URL}/rsa/wrap-key`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/wrap-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ public_key: rsaPublicKey, symmetric_key: symmetricKey })
@@ -196,7 +199,7 @@ function App() {
       return;
     }
     try {
-      const res = await fetch(`${BASE_HTTP_URL}/rsa/unwrap-key`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/unwrap-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ private_key: rsaPrivateKey, encrypted_key: encryptedKey })
@@ -205,6 +208,26 @@ function App() {
       if (res.ok) {
         setSymmetricKey(data.symmetric_key);
         setRsaStatus('✅ Anahtar açıldı.');
+      } else {
+        setRsaStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
+      }
+    } catch (error) {
+      setRsaStatus(`Bağlantı hatası: ${error.message}`);
+    }
+  };
+
+  const fetchLatestKey = async () => {
+    setRsaStatus('');
+    try {
+      const res = await fetch(`${BASE_HTTP_URL}/key-distribution/latest`, {
+        method: 'GET'
+      });
+      const data = await res.json();
+      if (res.ok && data.status === 'success' && data.data?.symmetric_key) {
+        setKey(String(data.data.symmetric_key));
+        setRsaStatus('Son anahtar alındı ve Key alanına yazıldı.');
+      } else if (res.ok && data.status === 'empty') {
+        setRsaStatus('Henüz dağıtılmış anahtar yok.');
       } else {
         setRsaStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
       }
@@ -382,6 +405,22 @@ function App() {
               Generate 2048
             </button>
           </div>
+          <div className="grid md:grid-cols-2 gap-3 mb-4">
+            <input
+              type="text"
+              value={rsaHost}
+              onChange={(e) => setRsaHost(e.target.value)}
+              className="w-full px-3 py-2 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+              placeholder="RSA server host"
+            />
+            <input
+              type="text"
+              value={rsaPort}
+              onChange={(e) => setRsaPort(e.target.value)}
+              className="w-full px-3 py-2 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
+              placeholder="RSA server port"
+            />
+          </div>
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="block text-xs text-white/60">Public Key (PEM)</label>
@@ -407,6 +446,16 @@ function App() {
                 className="w-full text-black font-bold py-3 rounded-lg transition-all hover:scale-[1.01]"
               >
                 Anahtarı Sar (Public)
+              </button>
+              <button
+                onClick={fetchLatestKey}
+                style={{
+                  background: `linear-gradient(135deg, ${COLOR_PINK} 0%, ${COLOR_ACCENT} 100%)`,
+                  boxShadow: `0 0 30px ${COLOR_PINK}60`
+                }}
+                className="w-full text-black font-bold py-3 rounded-lg transition-all hover:scale-[1.01]"
+              >
+                Fetch Latest Key
               </button>
             </div>
             <div className="space-y-2">

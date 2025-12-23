@@ -7,14 +7,13 @@ import asyncio
 
 try:
     from .utils.cipher_factory import CipherFactory
-    from .rsa_cipher import RSACipher
 except:
     from utils.cipher_factory import CipherFactory
-    from rsa_cipher import RSACipher
 
 app = FastAPI(title="Crypto Server")
 
 connected_clients: List[WebSocket] = []
+received_keys: List[dict] = []
 
 
 app.add_middleware(
@@ -39,16 +38,10 @@ class DecryptRequest(BaseModel):
     key: str | int
     mode: str = "ECB"
 
-class RSAKeygenRequest(BaseModel):
-    key_size: int = 2048
-
-class RSAWrapRequest(BaseModel):
-    public_key: str
+class KeyDistributionRequest(BaseModel):
     symmetric_key: str
-
-class RSAUnwrapRequest(BaseModel):
-    private_key: str
-    encrypted_key: str
+    sender_id: str | None = None
+    receiver_mac: str | None = None
 
 
 @app.websocket("/ws")
@@ -154,30 +147,20 @@ def decrypt_message(request: DecryptRequest):
 
 
 # RSA key wrapping endpoints (AES/DES anahtari güvenli tasimak icin)
-@app.post("/rsa/generate")
-def generate_rsa_keys(request: RSAKeygenRequest):
-    try:
-        private_key, public_key = RSACipher.generate_keypair(request.key_size)
-        return {"private_key": private_key, "public_key": public_key}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@app.post("/key-distribution")
+def receive_key_distribution(request: KeyDistributionRequest):
+    received_keys.append(
+        {
+            "symmetric_key": request.symmetric_key,
+            "sender_id": request.sender_id,
+            "receiver_mac": request.receiver_mac,
+        }
+    )
+    return {"status": "success"}
 
 
-@app.post("/rsa/wrap-key")
-def wrap_symmetric_key(request: RSAWrapRequest):
-    try:
-        rsa = RSACipher(public_key_pem=request.public_key)
-        encrypted_key = rsa.wrap_key(request.symmetric_key)
-        return {"encrypted_key": encrypted_key, "status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/rsa/unwrap-key")
-def unwrap_symmetric_key(request: RSAUnwrapRequest):
-    try:
-        rsa = RSACipher(private_key_pem=request.private_key)
-        symmetric_key = rsa.unwrap_key(request.encrypted_key)
-        return {"symmetric_key": symmetric_key, "status": "success"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+@app.get("/key-distribution/latest")
+def get_latest_key_distribution():
+    if not received_keys:
+        return {"status": "empty"}
+    return {"status": "success", "data": received_keys[-1]}

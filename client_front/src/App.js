@@ -13,6 +13,12 @@ const generateStars = (count) =>
 export default function CryptoClient() {
   const [serverIp, setServerIp] = useState('localhost');
   const [serverPort, setServerPort] = useState('8080');
+  const [rsaServerIp, setRsaServerIp] = useState('localhost');
+  const [rsaServerPort, setRsaServerPort] = useState('9090');
+  const [receiverHost, setReceiverHost] = useState('localhost');
+  const [receiverPort, setReceiverPort] = useState('8080');
+  const [receiverPath, setReceiverPath] = useState('/key-distribution');
+  const [useHttps, setUseHttps] = useState(false);
   const [stars] = useState(() => generateStars(55));
 
   const [message, setMessage] = useState('');
@@ -28,6 +34,7 @@ export default function CryptoClient() {
   const [symmetricKey, setSymmetricKey] = useState('');
   const [encryptedKey, setEncryptedKey] = useState('');
   const [rsaStatus, setRsaStatus] = useState('');
+  const [keyFileStatus, setKeyFileStatus] = useState('');
 
   const wsRef = useRef(null);
   const [wsStatus, setWsStatus] = useState('Disconnected');
@@ -38,6 +45,10 @@ export default function CryptoClient() {
 
   const WS_URL = useMemo(() => `ws://${serverIp}:${serverPort}/ws`, [serverIp, serverPort]);
   const HTTP_URL = useMemo(() => `http://${serverIp}:${serverPort}`, [serverIp, serverPort]);
+  const RSA_HTTP_URL = useMemo(
+    () => `http://${rsaServerIp}:${rsaServerPort}`,
+    [rsaServerIp, rsaServerPort]
+  );
 
   useEffect(() => {
     if (wsRef.current) wsRef.current.close();
@@ -125,16 +136,40 @@ export default function CryptoClient() {
     }
   };
 
+  const loadKeysFromFile = async () => {
+    setKeyFileStatus('');
+    try {
+      const res = await fetch('/rsa_keys.json', { cache: 'no-store' });
+      if (!res.ok) {
+        setKeyFileStatus('Key file not found.');
+        return null;
+      }
+      const data = await res.json();
+      if (data.public_key && data.private_key) {
+        setRsaPublicKey(data.public_key);
+        setRsaPrivateKey(data.private_key);
+        setKeyFileStatus('Key file loaded.');
+        return { publicKey: data.public_key, privateKey: data.private_key };
+      }
+      setKeyFileStatus('Key file missing fields.');
+      return null;
+    } catch (err) {
+      setKeyFileStatus(`Key file error: ${err.message}`);
+      return null;
+    }
+  };
+
   const generateRsaKeys = async () => {
     setRsaStatus('');
     try {
-      const res = await fetch(`${HTTP_URL}/rsa/generate`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/generate-and-save`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key_size: 2048 }),
       });
       const data = await res.json();
       if (res.ok) {
+        await loadKeysFromFile();
         setRsaPrivateKey(data.private_key);
         setRsaPublicKey(data.public_key);
         setRsaStatus('✅ RSA anahtar çifti üretildi.');
@@ -148,15 +183,20 @@ export default function CryptoClient() {
 
   const wrapSymmetricKey = async () => {
     setRsaStatus('');
-    if (!rsaPublicKey || !symmetricKey) {
+    let publicKey = rsaPublicKey;
+    if (!publicKey) {
+      const loaded = await loadKeysFromFile();
+      publicKey = loaded?.publicKey || '';
+    }
+    if (!publicKey || !symmetricKey) {
       setRsaStatus('⚠️ Public key ve simetrik anahtar girilmeli.');
       return;
     }
     try {
-      const res = await fetch(`${HTTP_URL}/rsa/wrap-key`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/wrap-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ public_key: rsaPublicKey, symmetric_key: symmetricKey }),
+        body: JSON.stringify({ public_key: publicKey, symmetric_key: symmetricKey }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -172,15 +212,20 @@ export default function CryptoClient() {
 
   const unwrapSymmetricKey = async () => {
     setRsaStatus('');
-    if (!rsaPrivateKey || !encryptedKey) {
+    let privateKey = rsaPrivateKey;
+    if (!privateKey) {
+      const loaded = await loadKeysFromFile();
+      privateKey = loaded?.privateKey || '';
+    }
+    if (!privateKey || !encryptedKey) {
       setRsaStatus('⚠️ Private key ve sarılmış anahtar gerekli.');
       return;
     }
     try {
-      const res = await fetch(`${HTTP_URL}/rsa/unwrap-key`, {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/unwrap-key`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ private_key: rsaPrivateKey, encrypted_key: encryptedKey }),
+        body: JSON.stringify({ private_key: privateKey, encrypted_key: encryptedKey }),
       });
       const data = await res.json();
       if (res.ok) {
@@ -191,6 +236,35 @@ export default function CryptoClient() {
       }
     } catch (err) {
       setRsaStatus(`⚠️ Bağlantı hatası: ${err.message}`);
+    }
+  };
+
+  const distributeSymmetricKey = async () => {
+    setRsaStatus('');
+    if (!encryptedKey) {
+      setRsaStatus('Encrypted key required before distribution.');
+      return;
+    }
+    try {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/distribute-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          encrypted_key: encryptedKey,
+          receiver_host: receiverHost,
+          receiver_port: parseInt(receiverPort, 10),
+          receiver_path: receiverPath,
+          use_https: useHttps,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRsaStatus(`Key distributed to ${data.delivered_to || 'receiver'}.`);
+      } else {
+        setRsaStatus(`Error: ${data.detail || 'Unknown error'}`);
+      }
+    } catch (err) {
+      setRsaStatus(`Connection error: ${err.message}`);
     }
   };
 
@@ -430,13 +504,94 @@ export default function CryptoClient() {
               Key Wrap (OAEP)
             </div>
           </div>
+          <div className="grid md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="text-xs text-white/60 mb-2 block">RSA Server IP</label>
+              <input
+                type="text"
+                value={rsaServerIp}
+                onChange={(e) => setRsaServerIp(e.target.value)}
+                className="w-full px-3 py-3 rounded-lg bg-white text-gray-900 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-white/60 mb-2 block">RSA Server Port</label>
+              <input
+                type="text"
+                value={rsaServerPort}
+                onChange={(e) => setRsaServerPort(e.target.value)}
+                className="w-full px-3 py-3 rounded-lg bg-white text-gray-900 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
+            <div className="flex items-end gap-2">
+              <input
+                id="rsa-use-https"
+                type="checkbox"
+                checked={useHttps}
+                onChange={(e) => setUseHttps(e.target.checked)}
+                className="h-4 w-4"
+              />
+              <label htmlFor="rsa-use-https" className="text-xs text-white/60">
+                Use HTTPS for receiver
+              </label>
+            </div>
+          </div>
+          <div className="grid md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="text-xs text-white/60 mb-2 block">Receiver Host</label>
+              <input
+                type="text"
+                value={receiverHost}
+                onChange={(e) => setReceiverHost(e.target.value)}
+                className="w-full px-3 py-3 rounded-lg bg-white text-gray-900 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-white/60 mb-2 block">Receiver Port</label>
+              <input
+                type="text"
+                value={receiverPort}
+                onChange={(e) => setReceiverPort(e.target.value)}
+                className="w-full px-3 py-3 rounded-lg bg-white text-gray-900 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
+            <div>
+              <label className="text-xs text-white/60 mb-2 block">Receiver Path</label>
+              <input
+                type="text"
+                value={receiverPath}
+                onChange={(e) => setReceiverPath(e.target.value)}
+                className="w-full px-3 py-3 rounded-lg bg-white text-gray-900 border border-white/30 focus:outline-none focus:ring-2 focus:ring-pink-300"
+              />
+            </div>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+            <button
+              onClick={generateRsaKeys}
+              className="text-xs px-3 py-2 bg-white text-gray-900 rounded-lg border border-white/30 hover:bg-white/90"
+            >
+              Generate & Save Keys
+            </button>
+            <button
+              onClick={loadKeysFromFile}
+              className="text-xs px-3 py-2 bg-white/10 text-white rounded-lg border border-white/20 hover:bg-white/20"
+            >
+              Load Key File
+            </button>
+            <div className="text-xs text-white/60">Key file: /rsa_keys.json</div>
+          </div>
+          {keyFileStatus && (
+            <div className="mb-4 text-xs text-white/70 bg-black/40 border border-white/10 rounded-lg px-3 py-2">
+              {keyFileStatus}
+            </div>
+          )}
           <div className="grid md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs text-white/60">Public Key (PEM)</label>
                 <button
                   onClick={generateRsaKeys}
-                  className="text-xs px-3 py-1 bg-white text-gray-900 rounded-lg border border-white/30 hover:bg-white/90"
+                  className="hidden"
                 >
                   RSA Üret
                 </button>
@@ -444,7 +599,7 @@ export default function CryptoClient() {
               <textarea
                 value={rsaPublicKey}
                 onChange={(e) => setRsaPublicKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 border border-white/10 rounded-lg text-white text-xs min-h-[120px] font-mono"
+                className="hidden"
                 placeholder="-----BEGIN PUBLIC KEY-----"
               />
               <label className="text-xs text-white/60">Simetrik Anahtar (AES/DES)</label>
@@ -470,7 +625,7 @@ export default function CryptoClient() {
               <textarea
                 value={rsaPrivateKey}
                 onChange={(e) => setRsaPrivateKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 border border-white/10 rounded-lg text-white text-xs min-h-[120px] font-mono"
+                className="hidden"
                 placeholder="-----BEGIN PRIVATE KEY-----"
               />
               <label className="text-xs text-white/60">Sarılmış Anahtar (Base64)</label>
@@ -491,6 +646,18 @@ export default function CryptoClient() {
                 Anahtarı Aç (Private)
               </button>
             </div>
+          </div>
+          <div className="mt-4">
+            <button
+              onClick={distributeSymmetricKey}
+              className="w-full text-gray-900 font-bold py-3 rounded-lg"
+              style={{
+                background: `linear-gradient(135deg, ${COLOR_PINK} 0%, ${COLOR_ACCENT} 100%)`,
+                boxShadow: `0 10px 30px ${COLOR_PINK}40`,
+              }}
+            >
+              Distribute Key to Receiver
+            </button>
           </div>
           {rsaStatus && (
             <div className="mt-3 text-sm text-white/80 font-mono break-all bg-black/40 border border-white/10 rounded-lg p-3">
