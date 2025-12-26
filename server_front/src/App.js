@@ -1,25 +1,23 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Unlock, RefreshCw, Server, AlertCircle } from 'lucide-react';
+import { decryptLocal } from './local_ciphers';
+import { Unlock, RefreshCw, AlertCircle } from 'lucide-react';
 
 function App() {
   // STATE'LER
   const [host, setHost] = useState('localhost');
   const [port, setPort] = useState('8080');
-  const [rsaHost, setRsaHost] = useState('localhost');
-  const [rsaPort, setRsaPort] = useState('9090');
+  const [useHttps, setUseHttps] = useState(false);
   const [messages, setMessages] = useState([]);
   const [incomingMessages, setIncomingMessages] = useState([]);
   const [encryptedInput, setEncryptedInput] = useState('');
   const [cipherType, setCipherType] = useState('caesar');
   const [mode, setMode] = useState('ECB');
   const [key, setKey] = useState('3');
+  const [lastKeys, setLastKeys] = useState({});
+  const [useLocalDecrypt, setUseLocalDecrypt] = useState(false);
   const [decryptedResult, setDecryptedResult] = useState('');
   const [loading, setLoading] = useState(false);
   const [serverStatus, setServerStatus] = useState('offline');
-  const [rsaPublicKey, setRsaPublicKey] = useState('');
-  const [rsaPrivateKey, setRsaPrivateKey] = useState('');
-  const [symmetricKey, setSymmetricKey] = useState('');
-  const [encryptedKey, setEncryptedKey] = useState('');
   const [rsaStatus, setRsaStatus] = useState('');
 
   // RENKLER
@@ -28,10 +26,14 @@ function App() {
   const COLOR_ACCENT = '#ff1493';
 
   // URL'LER
-  const BASE_HTTP_URL = useMemo(() => `http://${host}:${port}`, [host, port]);
-  const BASE_WS_URL = useMemo(() => `ws://${host}:${port}/ws`, [host, port]);
-  const RSA_HTTP_URL = useMemo(() => `http://${rsaHost}:${rsaPort}`, [rsaHost, rsaPort]);
-
+  const BASE_HTTP_URL = useMemo(
+    () => `${useHttps ? 'https' : 'http'}://${host}:${port}`,
+    [host, port, useHttps]
+  );
+  const BASE_WS_URL = useMemo(
+    () => `${useHttps ? 'wss' : 'ws'}://${host}:${port}/ws`,
+    [host, port, useHttps]
+  );
   // YILDIZLAR
   const generateStars = (count) => {
     return Array.from({ length: count }, (_, i) => ({
@@ -80,6 +82,8 @@ function App() {
           encrypted: data.encrypted_message,
           cipher: data.cipher_type,
           key: data.key,
+          encrypted_key: data.encrypted_key,
+          already_encrypted: data.already_encrypted,
           mode: data.mode || 'ECB',
           original: data.original_message,
           timestamp: new Date().toLocaleString('tr-TR')
@@ -111,6 +115,28 @@ function App() {
     
     setLoading(true);
     try {
+      if (useLocalDecrypt) {
+        let plain = '';
+        try {
+          plain = decryptLocal(cipherType, encryptedInput, key, mode);
+        } catch (err) {
+          plain = `Decryption failed: ${err.message}`;
+        }
+        setDecryptedResult(plain || 'Decryption failed.');
+        setMessages(prev => [{
+          id: Date.now(),
+          encrypted: encryptedInput,
+          decrypted: plain || 'Decryption failed.',
+          cipher: cipherType,
+          mode: cipherType === 'des_manual' ? mode : undefined,
+          timestamp: new Date().toLocaleString('tr-TR')
+        }, ...prev]);
+        if (key) {
+          setLastKeys(prev => ({ ...prev, [cipherType]: key }));
+        }
+        setEncryptedInput('');
+        return;
+      }
       const res = await fetch(`${BASE_HTTP_URL}/decrypt`, {
         method: 'POST',
         headers: {
@@ -136,6 +162,9 @@ function App() {
           mode: cipherType === 'des_manual' ? mode : undefined,
           timestamp: new Date().toLocaleString('tr-TR')
         }, ...prev]);
+        if (key) {
+          setLastKeys(prev => ({ ...prev, [cipherType]: key }));
+        }
         setEncryptedInput('');
       } else {
         setDecryptedResult(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
@@ -147,74 +176,6 @@ function App() {
     }
   };
 
-  const generateRsaKeys = async () => {
-    setRsaStatus('');
-    try {
-      const res = await fetch(`${RSA_HTTP_URL}/rsa/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key_size: 2048 })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setRsaPrivateKey(data.private_key);
-        setRsaPublicKey(data.public_key);
-        setRsaStatus('✅ RSA anahtar çifti üretildi.');
-      } else {
-        setRsaStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
-      }
-    } catch (error) {
-      setRsaStatus(`Bağlantı hatası: ${error.message}`);
-    }
-  };
-
-  const wrapSymmetricKey = async () => {
-    setRsaStatus('');
-    if (!rsaPublicKey || !symmetricKey) {
-      setRsaStatus('Public key ve simetrik anahtar gerekli.');
-      return;
-    }
-    try {
-      const res = await fetch(`${RSA_HTTP_URL}/rsa/wrap-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ public_key: rsaPublicKey, symmetric_key: symmetricKey })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setEncryptedKey(data.encrypted_key);
-        setRsaStatus('✅ Anahtar sarıldı (RSA-OAEP).');
-      } else {
-        setRsaStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
-      }
-    } catch (error) {
-      setRsaStatus(`Bağlantı hatası: ${error.message}`);
-    }
-  };
-
-  const unwrapSymmetricKey = async () => {
-    setRsaStatus('');
-    if (!rsaPrivateKey || !encryptedKey) {
-      setRsaStatus('Private key ve sarılmış anahtar gerekli.');
-      return;
-    }
-    try {
-      const res = await fetch(`${RSA_HTTP_URL}/rsa/unwrap-key`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ private_key: rsaPrivateKey, encrypted_key: encryptedKey })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setSymmetricKey(data.symmetric_key);
-        setRsaStatus('✅ Anahtar açıldı.');
-      } else {
-        setRsaStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
-      }
-    } catch (error) {
-      setRsaStatus(`Bağlantı hatası: ${error.message}`);
-    }
-  };
 
   const fetchLatestKey = async () => {
     setRsaStatus('');
@@ -248,10 +209,15 @@ function App() {
   const loadToDecrypt = (msg) => {
     setEncryptedInput(msg.encrypted);
     setCipherType(msg.cipher);
-    setKey(String(msg.key));
+    if (msg.key) {
+      setKey(String(msg.key));
+    } else if (lastKeys[msg.cipher]) {
+      setKey(String(lastKeys[msg.cipher]));
+    }
     if (msg.mode) {
       setMode(msg.mode);
     }
+    setUseLocalDecrypt(Boolean(msg.already_encrypted));
   };
 
   const getServerStatusColor = () => {
@@ -359,14 +325,14 @@ function App() {
         <div className="bg-white/5 backdrop-blur-xl border border-pink-500/20 rounded-2xl p-6 mb-12 shadow-2xl shadow-pink-500/10 animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-4 shrink-0">
-              <div className={`w-4 h-4 rounded-full ${getServerStatusColor()} animate-pulse shadow-lg`} 
+              <div className={`w-4 h-4 rounded-full ${getServerStatusColor()} animate-pulse shadow-lg`}
                 style={{ boxShadow: serverStatus === 'online' ? '0 0 20px #10b981' : '0 0 20px #ef4444' }} />
               <span className="text-white font-bold tracking-[0.2em] text-lg">
-                {serverStatus === 'online' ? '● ONLINE' : '○ OFFLINE'}
+                {serverStatus === 'online' ? 'ONLINE' : 'OFFLINE'}
               </span>
             </div>
             
-            <div className="flex gap-3 w-full sm:w-auto p-3 border border-pink-500/30 rounded-xl bg-black/50 backdrop-blur-sm">
+            <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto p-3 border border-pink-500/30 rounded-xl bg-black/50 backdrop-blur-sm">
               <input
                 type="text"
                 value={host}
@@ -384,106 +350,38 @@ function App() {
                 min="1024"
                 max="65535"
               />
+              <label className="flex items-center gap-2 text-xs text-white/60">
+                <input
+                  type="checkbox"
+                  checked={useHttps}
+                  onChange={(e) => setUseHttps(e.target.checked)}
+                  className="h-4 w-4"
+                />
+                HTTPS
+              </label>
             </div>
           </div>
           <div className="mt-4 text-right">
             <p style={{ color: COLOR_ACCENT }} className="text-xs font-mono tracking-wider opacity-60">
-              {BASE_HTTP_URL} • {BASE_WS_URL}
+              {BASE_HTTP_URL} - {BASE_WS_URL}
             </p>
+          </div>
         </div>
-      </div>
 
-        {/* RSA Key Transport */}
+        {/* Key Distribution */}
         <div className="bg-white/5 backdrop-blur-xl border border-pink-500/20 rounded-2xl p-6 shadow-2xl shadow-pink-500/10 mb-8 animate-fade-in-up" style={{ animationDelay: '0.45s' }}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-pink-500/20">
-            <h2 className="text-xl font-bold tracking-[0.15em] text-white">RSA KEY WRAP</h2>
+            <h2 className="text-xl font-bold tracking-[0.15em] text-white">KEY DISTRIBUTION</h2>
             <button
-              onClick={generateRsaKeys}
+              onClick={fetchLatestKey}
               style={{ backgroundColor: COLOR_PINK }}
               className="text-black text-xs font-bold px-4 py-2 rounded-full shadow-lg hover:scale-105 active:scale-95 transition-all"
             >
-              Generate 2048
+              Fetch Latest Key
             </button>
           </div>
-          <div className="grid md:grid-cols-2 gap-3 mb-4">
-            <input
-              type="text"
-              value={rsaHost}
-              onChange={(e) => setRsaHost(e.target.value)}
-              className="w-full px-3 py-2 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
-              placeholder="RSA server host"
-            />
-            <input
-              type="text"
-              value={rsaPort}
-              onChange={(e) => setRsaPort(e.target.value)}
-              className="w-full px-3 py-2 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500"
-              placeholder="RSA server port"
-            />
-          </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="block text-xs text-white/60">Public Key (PEM)</label>
-              <textarea
-                value={rsaPublicKey}
-                onChange={(e) => setRsaPublicKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-xs min-h-[120px] font-mono"
-                placeholder="-----BEGIN PUBLIC KEY-----"
-              />
-              <label className="block text-xs text-white/60">Simetrik Anahtar (AES/DES)</label>
-              <input
-                value={symmetricKey}
-                onChange={(e) => setSymmetricKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-sm"
-                placeholder="ör. my-secret-key"
-              />
-              <button
-                onClick={wrapSymmetricKey}
-                style={{
-                  background: `linear-gradient(135deg, ${COLOR_PINK} 0%, ${COLOR_ACCENT} 100%)`,
-                  boxShadow: `0 0 30px ${COLOR_PINK}60`
-                }}
-                className="w-full text-black font-bold py-3 rounded-lg transition-all hover:scale-[1.01]"
-              >
-                Anahtarı Sar (Public)
-              </button>
-              <button
-                onClick={fetchLatestKey}
-                style={{
-                  background: `linear-gradient(135deg, ${COLOR_PINK} 0%, ${COLOR_ACCENT} 100%)`,
-                  boxShadow: `0 0 30px ${COLOR_PINK}60`
-                }}
-                className="w-full text-black font-bold py-3 rounded-lg transition-all hover:scale-[1.01]"
-              >
-                Fetch Latest Key
-              </button>
-            </div>
-            <div className="space-y-2">
-              <label className="block text-xs text-white/60">Private Key (PEM)</label>
-              <textarea
-                value={rsaPrivateKey}
-                onChange={(e) => setRsaPrivateKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-xs min-h-[120px] font-mono"
-                placeholder="-----BEGIN PRIVATE KEY-----"
-              />
-              <label className="block text-xs text-white/60">Sarılmış Anahtar (Base64)</label>
-              <textarea
-                value={encryptedKey}
-                onChange={(e) => setEncryptedKey(e.target.value)}
-                className="w-full px-3 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/20 rounded-lg text-white text-xs min-h-[80px] font-mono"
-                placeholder="RSA ile sarılmış anahtar"
-              />
-              <button
-                onClick={unwrapSymmetricKey}
-                style={{
-                  background: `linear-gradient(135deg, ${COLOR_ACCENT} 0%, ${COLOR_PINK} 100%)`,
-                  boxShadow: `0 0 30px ${COLOR_PINK}60`
-                }}
-                className="w-full text-black font-bold py-3 rounded-lg transition-all hover:scale-[1.01]"
-              >
-                Anahtarı Aç (Private)
-              </button>
-            </div>
+          <div className="text-xs text-white/60">
+            Anahtar /key-distribution/latest uzerinden okunur ve Key alanına yazilir.
           </div>
           {rsaStatus && (
             <div className="mt-3 text-sm text-white/80 font-mono break-all bg-black/40 border border-pink-500/20 rounded-lg p-3">
@@ -493,7 +391,8 @@ function App() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Incoming Messages Panel */}
+
+        {/* Incoming Messages Panel */}
           <div className="bg-white/5 backdrop-blur-xl border border-pink-500/20 rounded-2xl p-6 shadow-2xl shadow-pink-500/10 animate-fade-in-up" style={{ animationDelay: '0.3s' }}>
             <div className="flex items-center justify-between mb-6 pb-3 border-b border-pink-500/20">
               <div className="flex items-center gap-3">
@@ -548,6 +447,14 @@ function App() {
                         {msg.key}
                       </p>
                     </div>
+                    {msg.encrypted_key && (
+                      <div className="mb-3">
+                        <p className="text-xs text-white/40 mb-2 tracking-wider">WRAPPED KEY</p>
+                        <p className="text-sm text-white font-mono bg-black/60 rounded-lg px-3 py-2 select-all break-all border border-pink-500/10">
+                          {msg.encrypted_key}
+                        </p>
+                      </div>
+                    )}
                     
                     <div>
                       <p className="text-xs text-white/40 mb-2 tracking-wider">ENCRYPTED</p>
@@ -597,6 +504,12 @@ function App() {
                   <option value="aes" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>AES Cipher</option>
                   <option value="aes_manual" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>AES Cipher (Manual)</option>
                   <option value="hash" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Hash Cipher</option>
+                  <option value="affine" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Affine Cipher</option>
+                  <option value="substitution" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Substitution Cipher</option>
+                  <option value="polybius" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Polybius Cipher</option>
+                  <option value="pigpen" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Pigpen Cipher</option>
+                  <option value="columnar" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Columnar Transposition</option>
+                  <option value="hill" style={{ backgroundColor: COLOR_DARK, color: 'black' }}>Hill Cipher</option>
                 </select>
               </div>
               
@@ -604,31 +517,34 @@ function App() {
                 <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
                   KEY
                 </label>
-            <input
-              type="text"
-              value={key}
-              onChange={(e) => setKey(e.target.value)}
-              className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all font-mono"
-              placeholder={cipherType === 'caesar' ? '3' : 'KEYWORD'}
-            />
-          </div>
-          {cipherType === 'des_manual' && (
-            <div>
-              <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
-                MODE (ECB / CBC)
-              </label>
-              <select
-                value={mode}
-                onChange={(e) => setMode(e.target.value)}
-                className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
-                style={{ cursor: 'pointer' }}
-              >
-                <option value="ECB" style={{ backgroundColor: COLOR_DARK }}>ECB</option>
-                <option value="CBC" style={{ backgroundColor: COLOR_DARK }}>CBC</option>
-              </select>
+                <input
+                  type="text"
+                  value={key}
+                  onChange={(e) => setKey(e.target.value)}
+                  className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all font-mono"
+                  placeholder={cipherType === 'caesar' ? '3' : 'KEYWORD'}
+                />
+                {cipherType === 'hill' && (
+                  <p className="text-xs text-white/50 mt-2">Hill key format: 4, 9, or 16 numbers (2x2, 3x3, 4x4).</p>
+                )}
+              </div>
+              {cipherType === 'des_manual' && (
+                <div>
+                  <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">
+                    MODE (ECB / CBC)
+                  </label>
+                  <select
+                    value={mode}
+                    onChange={(e) => setMode(e.target.value)}
+                    className="w-full px-4 py-3 bg-black/40 backdrop-blur-sm border border-pink-500/30 rounded-xl text-white text-sm focus:outline-none focus:ring-2 focus:ring-pink-500 transition-all"
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <option value="ECB" style={{ backgroundColor: COLOR_DARK }}>ECB</option>
+                    <option value="CBC" style={{ backgroundColor: COLOR_DARK }}>CBC</option>
+                  </select>
+                </div>
+              )}
             </div>
-          )}
-        </div>
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-white/50 mb-2 tracking-wider">

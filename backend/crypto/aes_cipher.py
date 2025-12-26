@@ -21,9 +21,9 @@ class AESCipher(Cipher):
         if not isinstance(key, str):
             raise ValueError("AES anahtari string olmali.")
 
-        digest = hashlib.sha512(key.encode("utf-8")).digest()
-        self._key = digest[: 2 * self.block_size]  
-        self._iv = digest[2 * self.block_size : 3 * self.block_size]
+        digest = hashlib.sha256(key.encode("utf-8")).digest()
+        self._key = digest[: self.block_size]
+        self._iv = digest[self.block_size : 2 * self.block_size]
 
     @staticmethod
     def _pad(data: bytes) -> bytes:

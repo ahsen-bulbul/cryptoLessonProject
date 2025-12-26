@@ -31,6 +31,7 @@ class EncryptRequest(BaseModel):
     key: str | int
     mode: str = "ECB"
     encrypted_key: str | None = None  # RSA ile sarilmis simetrik anahtar (opsiyonel)
+    already_encrypted: bool = False
 
 class DecryptRequest(BaseModel):
     encrypted_message: str
@@ -72,49 +73,47 @@ def health():
     return {"status": "online", "connected_clients": len(connected_clients)}
 
 
-@app.post("/encrypt")
-async def encrypt_message(request: EncryptRequest):
-    print(f"*** HTTP POST İsteği Alındı! Mesaj: {request.message[:20]}...")
-    
+async def _encrypt_and_broadcast(request: EncryptRequest):
+    print(f"*** HTTP POST istegi alindi! Mesaj: {request.message[:20]}...")
+
     try:
-        
-        key = int(request.key) if request.cipher_type.lower() == "caesar" else request.key
-        
-       
-        cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key, request.mode)
-        encrypted = cipher.encrypt(request.message)
-        
-       
+        if request.already_encrypted:
+            encrypted = request.message
+            key = ""
+        else:
+            key = int(request.key) if request.cipher_type.lower() == "caesar" else request.key
+            cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key, request.mode)
+            encrypted = cipher.encrypt(request.message)
+
         broadcast_tasks = []
         clients_to_remove = []
-        
+
+        key_value = "" if request.encrypted_key else str(request.key)
         message_to_send = {
             "encrypted_message": encrypted,
             "cipher_type": request.cipher_type,
-            "key": str(request.key),
-            "original_message": request.message,
+            "key": key_value,
+            "original_message": "" if request.already_encrypted else request.message,
             "mode": request.mode,
             "encrypted_key": request.encrypted_key,
+            "already_encrypted": request.already_encrypted,
         }
-        
+
         for client in connected_clients:
             try:
                 task = client.send_json(message_to_send)
                 broadcast_tasks.append(task)
             except RuntimeError:
                 clients_to_remove.append(client)
-        
-       
+
         await asyncio.gather(*broadcast_tasks, return_exceptions=True)
 
-        # Kapanan client'ları listeden temizle
         for client in clients_to_remove:
             if client in connected_clients:
                 connected_clients.remove(client)
 
-        print(f"Şifrelenen mesaj broadcast edildi. Toplam client: {len(connected_clients)}")
+        print(f"Sifrelenen mesaj broadcast edildi. Toplam client: {len(connected_clients)}")
 
-      
         return {
             "encrypted_message": encrypted,
             "cipher_type": request.cipher_type,
@@ -123,19 +122,43 @@ async def encrypt_message(request: EncryptRequest):
             "encrypted_key": request.encrypted_key,
         }
     except Exception as e:
-        print(f"HATA: Şifreleme veya Broadcast hatası: {e}")
+        print(f"HATA: Sifreleme veya Broadcast hatasi: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+
+@app.post("/encrypt")
+async def encrypt_message(request: EncryptRequest):
+    return await _encrypt_and_broadcast(request)
+
+
 @app.post("/decrypt")
-def decrypt_message(request: DecryptRequest):
+async def decrypt_message(request: DecryptRequest):
     try:
-       
         key = int(request.key) if request.cipher_type.lower() == "caesar" else request.key
         
         cipher = CipherFactory.get_cipher(request.cipher_type.lower(), key, request.mode)
         decrypted = cipher.decrypt(request.encrypted_message)
-        
-      
+
+        payload = {
+            "event": "decrypt_result",
+            "cipher_type": request.cipher_type,
+            "encrypted_message": request.encrypted_message,
+            "decrypted_message": decrypted,
+            "mode": request.mode,
+        }
+        broadcast_tasks = []
+        clients_to_remove = []
+        for client in connected_clients:
+            try:
+                task = client.send_json(payload)
+                broadcast_tasks.append(task)
+            except RuntimeError:
+                clients_to_remove.append(client)
+        await asyncio.gather(*broadcast_tasks, return_exceptions=True)
+        for client in clients_to_remove:
+            if client in connected_clients:
+                connected_clients.remove(client)
+
         return {
             "decrypted_message": decrypted,
             "cipher_type": request.cipher_type,

@@ -1,0 +1,62 @@
+const wrapSymmetricKey = async () => {
+    setRsaStatus('');
+    let publicKey = rsaPublicKey;
+    if (!publicKey) {
+      const loaded = await loadKeysFromFile();
+      publicKey = loaded?.publicKey || '';
+    }
+    if (!publicKey || !symmetricKey) {
+      setRsaStatus('⚠️ Public key ve simetrik anahtar girilmeli.');
+      return null;
+    }
+    try {
+      const res = await fetch(`${RSA_HTTP_URL}/rsa/wrap-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: publicKey, symmetric_key: symmetricKey }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setRsaEncryptedKey(data.encrypted_key);
+        setRsaStatus('✅ Anahtar sarıldı (RSA-OAEP).');
+        return data.encrypted_key;
+      } else {
+        setRsaStatus(`⚠️ Hata: ${data.detail || 'Bilinmeyen hata'}`);
+      }
+    } catch (err) {
+      setRsaStatus(`⚠️ Bağlantı hatası: ${err.message}`);
+    }
+    return null;
+  };
+
+  const wrapEccSymmetricKey = async () => {
+    setEccStatus('');
+    let publicKey = eccPublicKey;
+    if (!publicKey) {
+      const loaded = await loadEccKeysFromFile();
+      publicKey = loaded?.publicKey || '';
+    }
+    if (!publicKey || !symmetricKey) {
+      setEccStatus('Public key ve simetrik anahtar girilmeli.');
+      return null;
+    }
+    try {
+      const res = await fetch(`${RSA_HTTP_URL}/ecc/wrap-key`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ public_key: publicKey, symmetric_key: symmetricKey }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEccEncryptedKey(data.encrypted_key);
+        setEccStatus('Anahtar sarildi (ECIES).');
+        return data.encrypted_key;
+      }
+      setEccStatus(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
+    } catch (err) {
+      setEccStatus(`Baglanti hatasi: ${err.message}`);
+    }
+    return null;
+  };
+
+  

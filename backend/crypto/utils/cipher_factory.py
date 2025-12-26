@@ -8,6 +8,12 @@ from crypto.des_cipher import DESCipher
 from crypto.aes_cipher import AESCipher
 from crypto.des_m_cipher import DESMCipher
 from crypto.aes_m_cipher import AESMCipher
+from crypto.affine_cipher import AffineCipher
+from crypto.substitution_cipher import SubstitutionCipher
+from crypto.polybius_cipher import PolybiusCipher
+from crypto.pigpen_cipher import PigpenCipher
+from crypto.columnar_transposition_cipher import ColumnarTranspositionCipher
+from crypto.hill_cipher import HillCipher
 
 
 class CipherFactory:
@@ -26,6 +32,13 @@ class CipherFactory:
             "des_manual": lambda k: DESMCipher(k, normalized_mode),
             "aes": lambda k: AESCipher(k),
             "aes_manual": lambda k: AESMCipher(k),
+            "affine": lambda k: AffineCipher(k),
+            "substitution": lambda k: SubstitutionCipher(k),
+            "polybius": lambda k: PolybiusCipher(k),
+            "pigpen": lambda k: PigpenCipher(k),
+            "columnar": lambda k: ColumnarTranspositionCipher(k),
+            "columnar_transposition": lambda k: ColumnarTranspositionCipher(k),
+            "hill": lambda k: HillCipher(k),
         }
 
         if name in ("des_manual", "desm", "des-manual", "des"):
