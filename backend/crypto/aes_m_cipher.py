@@ -20,30 +20,57 @@ class AESMCipher(Cipher):
         digest = hashlib.sha256(key.encode("utf-8")).digest()
         self._key = digest[:16]      # 128-bit key
         self._iv = digest[16:32]     # 128-bit IV
-        self._s_box, self._inv_s_box = self._generate_sboxes(digest)
+        self._s_box, self._inv_s_box = self._generate_sboxes()
         self._round_keys = self._expand_key(self._key)
 
     @staticmethod
-    def _prng_bytes(seed: bytes, length: int) -> bytes:
-        out = bytearray()
-        counter = 0
-        while len(out) < length:
-            counter_bytes = counter.to_bytes(4, "big")
-            out.extend(hashlib.sha256(seed + counter_bytes).digest())
-            counter += 1
-        return bytes(out[:length])
+    def _gf_mul(a: int, b: int) -> int:
+        p = 0
+        for _ in range(8):
+            if b & 1:
+                p ^= a
+            hi = a & 0x80
+            a = (a << 1) & 0xFF
+            if hi:
+                a ^= 0x1B
+            b >>= 1
+        return p
 
-    def _generate_sboxes(self, seed: bytes):
-        sbox = list(range(256))
-        rand = self._prng_bytes(seed, 256)
-        idx = 0
-        for i in range(255, 0, -1):
-            j = rand[idx] % (i + 1)
-            idx += 1
-            sbox[i], sbox[j] = sbox[j], sbox[i]
+    @classmethod
+    def _gf_pow(cls, a: int, e: int) -> int:
+        res = 1
+        while e > 0:
+            if e & 1:
+                res = cls._gf_mul(res, a)
+            a = cls._gf_mul(a, a)
+            e >>= 1
+        return res
+
+    @classmethod
+    def _gf_inv(cls, a: int) -> int:
+        if a == 0:
+            return 0
+        return cls._gf_pow(a, 254)
+
+    @staticmethod
+    def _rotl8(x: int, n: int) -> int:
+        n &= 7
+        return ((x << n) | (x >> (8 - n))) & 0xFF
+
+    @classmethod
+    def _aes_affine(cls, x: int) -> int:
+        return (x ^ cls._rotl8(x, 1) ^ cls._rotl8(x, 2) ^
+                cls._rotl8(x, 3) ^ cls._rotl8(x, 4) ^ 0x63) & 0xFF
+
+    @classmethod
+    def _generate_sboxes(cls):
+        sbox = [0] * 256
         inv = [0] * 256
-        for i, val in enumerate(sbox):
-            inv[val] = i
+        for a in range(256):
+            inv_a = cls._gf_inv(a)
+            s = cls._aes_affine(inv_a)
+            sbox[a] = s
+            inv[s] = a
         return sbox, inv
 
     @staticmethod

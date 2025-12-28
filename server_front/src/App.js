@@ -17,6 +17,7 @@ function App() {
   const [useLocalDecrypt, setUseLocalDecrypt] = useState(false);
   const [decryptedResult, setDecryptedResult] = useState('');
   const [loading, setLoading] = useState(false);
+  const [decryptTimeMs, setDecryptTimeMs] = useState(null);
   const [serverStatus, setServerStatus] = useState('offline');
   const [rsaStatus, setRsaStatus] = useState('');
 
@@ -114,14 +115,53 @@ function App() {
     if (!encryptedInput) return;
     
     setLoading(true);
+    setDecryptTimeMs(null);
+    const startTime = performance.now();
     try {
       if (useLocalDecrypt) {
+        const isAesManual = cipherType === 'aes_manual';
         let plain = '';
         try {
           plain = decryptLocal(cipherType, encryptedInput, key, mode);
         } catch (err) {
           plain = `Decryption failed: ${err.message}`;
         }
+        if (!plain && isAesManual) {
+          const res = await fetch(`${BASE_HTTP_URL}/decrypt`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              encrypted_message: encryptedInput,
+              cipher_type: cipherType,
+              key: key,
+              mode: cipherType === 'des_manual' ? mode : undefined
+            })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            const elapsed = performance.now() - startTime;
+            setDecryptTimeMs(elapsed);
+            setDecryptedResult(data.decrypted_message);
+            setMessages(prev => [{
+              id: Date.now(),
+              encrypted: encryptedInput,
+              decrypted: data.decrypted_message,
+              cipher: cipherType,
+              mode: cipherType === 'des_manual' ? mode : undefined,
+              decrypt_time_ms: elapsed,
+              timestamp: new Date().toLocaleString('tr-TR')
+            }, ...prev]);
+            if (key) {
+              setLastKeys(prev => ({ ...prev, [cipherType]: key }));
+            }
+            setEncryptedInput('');
+            return;
+          }
+        }
+        const elapsed = performance.now() - startTime;
+        setDecryptTimeMs(elapsed);
         setDecryptedResult(plain || 'Decryption failed.');
         setMessages(prev => [{
           id: Date.now(),
@@ -129,6 +169,7 @@ function App() {
           decrypted: plain || 'Decryption failed.',
           cipher: cipherType,
           mode: cipherType === 'des_manual' ? mode : undefined,
+          decrypt_time_ms: elapsed,
           timestamp: new Date().toLocaleString('tr-TR')
         }, ...prev]);
         if (key) {
@@ -153,6 +194,7 @@ function App() {
       const data = await res.json();
       
       if (res.ok) {
+        setDecryptTimeMs(performance.now() - startTime);
         setDecryptedResult(data.decrypted_message);
         setMessages(prev => [{
           id: Date.now(),
@@ -160,6 +202,7 @@ function App() {
           decrypted: data.decrypted_message,
           cipher: cipherType,
           mode: cipherType === 'des_manual' ? mode : undefined,
+          decrypt_time_ms: performance.now() - startTime,
           timestamp: new Date().toLocaleString('tr-TR')
         }, ...prev]);
         if (key) {
@@ -211,7 +254,7 @@ function App() {
     setCipherType(msg.cipher);
     if (msg.key) {
       setKey(String(msg.key));
-    } else if (lastKeys[msg.cipher]) {
+    } else if (!msg.encrypted_key && lastKeys[msg.cipher]) {
       setKey(String(lastKeys[msg.cipher]));
     }
     if (msg.mode) {
@@ -594,6 +637,11 @@ function App() {
                 }}>
                   <p className="text-white font-mono text-sm break-all select-all">{decryptedResult}</p>
                 </div>
+                {decryptTimeMs !== null && (
+                  <div className="mt-3 text-xs text-white/60 font-mono">
+                    Decrypt time: {decryptTimeMs.toFixed(2)} ms
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -655,6 +703,11 @@ function App() {
                         {msg.decrypted}
                       </p>
                     </div>
+                    {msg.decrypt_time_ms !== undefined && (
+                      <p className="text-xs text-white/50 mt-2 font-mono">
+                        Decrypt time: {msg.decrypt_time_ms.toFixed(2)} ms
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>

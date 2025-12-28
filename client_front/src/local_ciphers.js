@@ -617,7 +617,13 @@ const desDecrypt = (text, key) => {
   return CryptoJS.DES.decrypt(text, keyWord, { iv: ivWord, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).toString(CryptoJS.enc.Utf8);
 };
 
-const wordArrayFromBytes = (bytes) => CryptoJS.lib.WordArray.create(bytes);
+const wordArrayFromBytes = (bytes) => {
+  const words = [];
+  for (let i = 0; i < bytes.length; i += 1) {
+    words[i >>> 2] |= (bytes[i] & 0xFF) << (24 - (i % 4) * 8);
+  }
+  return CryptoJS.lib.WordArray.create(words, bytes.length);
+};
 
 const bytesFromWordArray = (wordArray) => {
   const words = wordArray.words;
@@ -631,41 +637,61 @@ const bytesFromWordArray = (wordArray) => {
   return bytes;
 };
 
-const prngBytes = (seedBytes, length) => {
-  let out = [];
-  let counter = 0;
-  while (out.length < length) {
-    const counterBytes = [
-      (counter >> 24) & 0xFF,
-      (counter >> 16) & 0xFF,
-      (counter >> 8) & 0xFF,
-      counter & 0xFF,
-    ];
-    const wa = wordArrayFromBytes(seedBytes.concat(counterBytes));
-    const digest = CryptoJS.SHA256(wa);
-    out = out.concat(bytesFromWordArray(digest));
-    counter += 1;
+const gfMul = (a, b) => {
+  let p = 0;
+  let aa = a;
+  let bb = b;
+  for (let i = 0; i < 8; i += 1) {
+    if (bb & 1) {
+      p ^= aa;
+    }
+    const hi = aa & 0x80;
+    aa = (aa << 1) & 0xFF;
+    if (hi) {
+      aa ^= 0x1B;
+    }
+    bb >>= 1;
   }
-  return out.slice(0, length);
+  return p;
 };
 
-const generateSBoxes = (key) => {
-  const seed = bytesFromWordArray(CryptoJS.SHA256(normalizeKey(key)));
-  const sbox = Array.from({ length: 256 }, (_, i) => i);
-  const rand = prngBytes(seed, 256);
-  let idx = 0;
-  for (let i = 255; i > 0; i -= 1) {
-    const j = rand[idx] % (i + 1);
-    idx += 1;
-    const temp = sbox[i];
-    sbox[i] = sbox[j];
-    sbox[j] = temp;
+const gfPow = (a, e) => {
+  let res = 1;
+  let base = a;
+  let exp = e;
+  while (exp > 0) {
+    if (exp & 1) {
+      res = gfMul(res, base);
+    }
+    base = gfMul(base, base);
+    exp >>= 1;
   }
+  return res;
+};
+
+const gfInv = (a) => {
+  if (a === 0) return 0;
+  return gfPow(a, 254);
+};
+
+const rotl8 = (x, n) => {
+  const shift = n & 7;
+  return ((x << shift) | (x >> (8 - shift))) & 0xFF;
+};
+
+const aesAffine = (x) =>
+  (x ^ rotl8(x, 1) ^ rotl8(x, 2) ^ rotl8(x, 3) ^ rotl8(x, 4) ^ 0x63) & 0xFF;
+
+const generateSBoxes = () => {
+  const sbox = new Array(256);
   const inv = new Array(256);
-  for (let i = 0; i < 256; i += 1) {
-    inv[sbox[i]] = i;
+  for (let a = 0; a < 256; a += 1) {
+    const invA = gfInv(a);
+    const s = aesAffine(invA);
+    sbox[a] = s;
+    inv[s] = a;
   }
-  return { sbox, inv, seed };
+  return { sbox, inv };
 };
 
 const padBytes = (bytes, blockSize) => {
@@ -837,7 +863,8 @@ const decryptBlock = (blockBytes, roundKeys, invSbox) => {
 };
 
 const aesManualEncrypt = (text, key) => {
-  const { sbox, seed } = generateSBoxes(key);
+  const { sbox } = generateSBoxes();
+  const seed = bytesFromWordArray(CryptoJS.SHA256(normalizeKey(key)));
   const keyBytes = seed.slice(0, 16);
   const ivBytes = seed.slice(16, 32);
   const roundKeys = expandKey(keyBytes, sbox);
@@ -854,7 +881,8 @@ const aesManualEncrypt = (text, key) => {
 };
 
 const aesManualDecrypt = (text, key) => {
-  const { sbox, inv, seed } = generateSBoxes(key);
+  const { sbox, inv } = generateSBoxes();
+  const seed = bytesFromWordArray(CryptoJS.SHA256(normalizeKey(key)));
   const keyBytes = seed.slice(0, 16);
   const ivBytes = seed.slice(16, 32);
   const roundKeys = expandKey(keyBytes, sbox);

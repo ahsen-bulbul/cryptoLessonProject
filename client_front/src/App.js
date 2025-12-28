@@ -82,6 +82,87 @@ const eccWrapWithPublicKey = async (publicKeyPem, symmetricKey) => {
   return btoa(JSON.stringify(payload));
 };
 
+const randomInt = (min, max) => {
+  const buf = new Uint32Array(1);
+  window.crypto.getRandomValues(buf);
+  return min + (buf[0] % (max - min + 1));
+};
+
+const gcd = (a, b) => {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x;
+};
+
+const randomFromCharset = (length, charset) => {
+  const bytes = new Uint8Array(length);
+  window.crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < length; i += 1) {
+    out += charset[bytes[i] % charset.length];
+  }
+  return out;
+};
+
+const generateKeyForCipher = (type) => {
+  const upper = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  switch ((type || '').toLowerCase()) {
+    case 'caesar':
+      return String(randomInt(1, 25));
+    case 'affine': {
+      const coprimes = [1, 3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25];
+      const a = coprimes[randomInt(0, coprimes.length - 1)];
+      const b = randomInt(0, 25);
+      return `${a},${b}`;
+    }
+    case 'vigenere':
+      return randomFromCharset(6, upper);
+    case 'railfence':
+      return String(randomInt(2, 6));
+    case 'playfair':
+      return randomFromCharset(6, upper);
+    case 'route':
+      return String(randomInt(2, 6));
+    case 'substitution': {
+      const letters = upper.split('');
+      for (let i = letters.length - 1; i > 0; i -= 1) {
+        const j = randomInt(0, i);
+        const tmp = letters[i];
+        letters[i] = letters[j];
+        letters[j] = tmp;
+      }
+      return letters.join('');
+    }
+    case 'polybius':
+      return randomFromCharset(6, upper);
+    case 'columnar':
+    case 'columnar_transposition':
+      return randomFromCharset(6, upper);
+    case 'hill': {
+      let a = 0;
+      let b = 0;
+      let c = 0;
+      let d = 0;
+      let det = 0;
+      do {
+        a = randomInt(0, 25);
+        b = randomInt(0, 25);
+        c = randomInt(0, 25);
+        d = randomInt(0, 25);
+        det = (a * d - b * c) % 26;
+      } while (det === 0 || gcd(det, 26) !== 1);
+      return `${a},${b},${c},${d}`;
+    }
+    default:
+      return '';
+  }
+};
+
 
 
 export default function CryptoClient() {
@@ -106,6 +187,7 @@ export default function CryptoClient() {
   const [encryptLocation, setEncryptLocation] = useState('local');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
+  const [encryptTimeMs, setEncryptTimeMs] = useState(null);
   const [incomingMessages, setIncomingMessages] = useState([]);
   const [decryptEvents, setDecryptEvents] = useState([]);
   const [rsaPublicKey, setRsaPublicKey] = useState('');
@@ -221,10 +303,19 @@ export default function CryptoClient() {
   }, [cipherType, key, symmetricKey]);
 
   useEffect(() => {
-    if (isSymmetricCipher && key === '3' && !symmetricKey) {
-      setKey('');
+    if (!isSymmetricCipher) return;
+    if (key && key !== '3') return;
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const length = ['aes', 'aes_manual'].includes(cipherType) ? 16 : 8;
+    const bytes = new Uint8Array(length);
+    window.crypto.getRandomValues(bytes);
+    let nextKey = '';
+    for (let i = 0; i < length; i += 1) {
+      nextKey += chars[bytes[i] % chars.length];
     }
-  }, [isSymmetricCipher, key, symmetricKey]);
+    setKey(nextKey);
+    setSymmetricKey(nextKey);
+  }, [cipherType, isSymmetricCipher, key, symmetricKey]);
 
   const handleFileUpload = async (e) => {
     const file = e.target.files[0];
@@ -239,6 +330,8 @@ export default function CryptoClient() {
     if (!message) return;
     setLoading(true);
     setResponse('');
+    setEncryptTimeMs(null);
+    const startTime = performance.now();
 
     try {
       const useRsaForCipher = keyTransport === 'rsa' && isSymmetricCipher;
@@ -270,6 +363,7 @@ export default function CryptoClient() {
         });
         const data = await res.json();
         if (res.ok) {
+          setEncryptTimeMs(performance.now() - startTime);
           setResponse(`HTTP POST basarili. Sifreli Mesaj: ${data.encrypted_message} (WS broadcast edildi)`);
         } else {
           setResponse(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
@@ -317,6 +411,7 @@ export default function CryptoClient() {
       });
       const data = await res.json();
       if (res.ok) {
+        setEncryptTimeMs(performance.now() - startTime);
         setResponse(`HTTP POST basarili. Sifreli Mesaj: ${data.encrypted_message} (WS broadcast edildi)`);
       } else {
         setResponse(`Hata: ${data.detail || 'Bilinmeyen hata'}`);
@@ -610,7 +705,7 @@ const fetchRsaPublicKey = async () => {
             <div>
               <label className="text-xs text-white/60 mb-2 block">Anahtar (Key)</label>
               <input
-                type={['aes', 'aes_manual'].includes(cipherType) ? 'password' : 'text'}
+                type="text"
                 value={key}
                 onChange={(e) => {
                   const nextValue = e.target.value;
@@ -621,6 +716,15 @@ const fetchRsaPublicKey = async () => {
                 }}
                 className="w-full px-4 py-3 rounded-xl bg-white/10 text-white border border-white/15 focus:outline-none focus:ring-2 focus:ring-pink-300"
               />
+              {!isSymmetricCipher && !['hash', 'pigpen'].includes(cipherType) && (
+                <button
+                  type="button"
+                  onClick={() => setKey(generateKeyForCipher(cipherType))}
+                  className="mt-3 text-xs px-3 py-2 bg-white text-gray-900 rounded-lg border border-white/30 hover:bg-white/90"
+                >
+                  Generate Key
+                </button>
+              )}
               {cipherType === 'hill' && (
                 <p className="text-xs text-white/50 mt-2">Hill key format: 4, 9, or 16 numbers (2x2, 3x3, 4x4).</p>
               )}
@@ -756,6 +860,11 @@ const fetchRsaPublicKey = async () => {
             <div className="bg-black/50 rounded-xl p-4 font-mono text-sm text-white/80 break-all border border-white/10">
               {response}
             </div>
+            {encryptTimeMs !== null && (
+              <div className="mt-3 text-xs text-white/60 font-mono">
+                Encrypt time: {encryptTimeMs.toFixed(2)} ms
+              </div>
+            )}
           </div>
         )}
 
